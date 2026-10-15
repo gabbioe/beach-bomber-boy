@@ -1,0 +1,4097 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Coastline Blasters // 60Hz Deterministic Pixel Arena</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #07111e;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(14, 165, 233, 0.12) 0%, transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(245, 158, 11, 0.10) 0%, transparent 45%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    canvas.pixelated {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .hud-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.07);
+    }
+    .game-btn {
+      transition: all 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 0 0 rgba(2, 6, 23, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+    }
+    .game-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 0 0 rgba(2, 6, 23, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.3);
+    }
+    .game-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 0 rgba(2, 6, 23, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    }
+    .dpad-btn {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      box-shadow: 0 4px 0 #090d16;
+      touch-action: manipulation;
+    }
+    .dpad-btn:active, .dpad-btn.active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #090d16;
+      background: rgba(14, 165, 233, 0.35);
+      border-color: #38bdf8;
+    }
+    /* Custom scrollbar for Atlas Inspector */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-2 sm:p-4">
+
+  <!-- TOP TELEMETRY & ENGINE HEADER -->
+  <header class="w-full max-w-[1440px] mx-auto mb-3">
+    <div class="hud-card rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand & Mode Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-400 via-cyan-500 to-amber-400 p-0.5 shadow-lg shadow-cyan-500/20 flex items-center justify-center">
+          <div class="w-full h-full bg-slate-950 rounded-[6px] flex items-center justify-center">
+            <svg class="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="11" cy="13" r="7" />
+              <path d="M16 8L19 5" stroke-linecap="round"/>
+              <path d="M19 2V5H22" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="9" cy="11" r="1.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white uppercase">Coastline Blasters</h1>
+            <span class="px-2 py-0.5 text-[10px] font-mono-tech font-semibold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 rounded">23x21 Archipelago Grid</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">4-Tile Animated Ocean Barrier &bull; Pre-Baked Pixel Atlas &bull; Zero-GC Object Pools</p>
+        </div>
+      </div>
+
+      <!-- Real-Time Deterministic Telemetry Metrics -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-mono-tech">
+        <div class="bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-slate-400">RENDER:</span>
+          <span id="hudFps" class="text-emerald-300 font-bold">60 FPS</span>
+        </div>
+        <div class="bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
+          <span class="text-slate-400">LOGIC TICK:</span>
+          <span id="hudTickRate" class="text-sky-300 font-bold">60.0 Hz (16.67ms)</span>
+        </div>
+        <div class="bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
+          <span class="text-slate-400">PARTICLES:</span>
+          <span id="hudParticles" class="text-amber-300 font-bold">0 / 600</span>
+        </div>
+        <div class="bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 hidden md:flex items-center gap-2">
+          <span class="text-slate-400">HEAP ALLOC:</span>
+          <span class="text-emerald-400 font-bold">0 B/tick (STATIC)</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button id="btnMultiplayer" class="game-btn px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-400 hover:to-sky-500 text-slate-950 border border-cyan-300 text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-cyan-500/20">
+          <span id="mpStatusDot" class="w-2 h-2 rounded-full bg-slate-950"></span>
+          <span id="lblMultiplayer">Online Lobby [M]</span>
+        </button>
+        <button id="btnSound" class="game-btn px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-semibold flex items-center gap-1.5">
+          <svg id="iconSoundOn" class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <span id="lblSound">SFX: ON</span>
+        </button>
+        <button id="btnAiVision" class="game-btn px-3 py-1.5 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-400/50 text-xs font-semibold flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span id="lblAiVision">AI Vision [V]: ON</span>
+        </button>
+        <button id="btnAtlas" class="game-btn px-3 py-1.5 rounded-lg bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 border border-indigo-500/40 text-xs font-semibold flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          <span>Inspect Atlas</span>
+        </button>
+        <button id="btnPause" class="game-btn px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-semibold">
+          Pause [P]
+        </button>
+        <button id="btnReset" class="game-btn px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-300 text-xs font-bold">
+          New Match [R]
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE: GAME CANVAS + TACTICAL SIDEBAR -->
+  <main class="w-full max-w-[1440px] mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    
+    <!-- LEFT/CENTER: ARENA VIEWPORT (8 COLUMNS ON DESKTOP) -->
+    <div class="lg:col-span-8 flex flex-col items-center">
+      <div class="relative w-full hud-card rounded-2xl p-2 sm:p-3 flex items-center justify-center overflow-hidden shadow-2xl">
+        <!-- Aspect-ratio wrapper for 23x21 grid (1104x1008 internal resolution) -->
+        <div class="relative w-full max-w-[828px] aspect-[23/21] rounded-xl overflow-hidden border-2 border-sky-500/30 shadow-inner bg-sky-950">
+          <canvas id="gameCanvas" width="1104" height="1008" class="pixelated w-full h-full block"></canvas>
+
+          <!-- OVERLAY: MATCH BANNER (VICTORY / DEFEAT / PAUSE) -->
+          <div id="matchOverlay" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+            <div class="max-w-md w-full hud-card rounded-2xl p-6 border border-sky-400/30 shadow-2xl">
+              <div id="overlayBadge" class="inline-block px-3 py-1 rounded-full text-xs font-mono-tech font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-400/40 mb-2">
+                MATCH COMPLETE
+              </div>
+              <h2 id="overlayTitle" class="text-3xl font-extrabold text-white tracking-tight mb-2">ISLAND CHAMPION</h2>
+              <p id="overlaySubtitle" class="text-sm text-slate-300 mb-6">All rival beach blasters have been eliminated from the cove.</p>
+              <div class="flex items-center justify-center gap-3">
+                <button id="btnOverlayAction" class="game-btn px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-extrabold text-sm tracking-wide uppercase">
+                  Play Again [R]
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MOBILE TOUCH CONTROLS (VISIBLE ON SMALL SCREENS) -->
+      <div class="w-full max-w-[540px] mt-3 flex lg:hidden items-center justify-between gap-4 px-2">
+        <!-- D-Pad -->
+        <div class="grid grid-cols-3 gap-1.5 w-36 h-36">
+          <div></div>
+          <button data-dir="UP" class="dpad-btn rounded-xl flex items-center justify-center text-slate-200 font-bold text-xs">UP</button>
+          <div></div>
+          <button data-dir="LEFT" class="dpad-btn rounded-xl flex items-center justify-center text-slate-200 font-bold text-xs">LEFT</button>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800"></div>
+          <button data-dir="RIGHT" class="dpad-btn rounded-xl flex items-center justify-center text-slate-200 font-bold text-xs">RIGHT</button>
+          <div></div>
+          <button data-dir="DOWN" class="dpad-btn rounded-xl flex items-center justify-center text-slate-200 font-bold text-xs">DOWN</button>
+          <div></div>
+        </div>
+        <!-- Bomb Trigger Button -->
+        <button id="btnTouchBomb" class="game-btn w-28 h-28 rounded-2xl bg-gradient-to-br from-rose-500 to-amber-500 text-slate-950 font-extrabold text-sm uppercase tracking-wider border-2 border-amber-200 flex flex-col items-center justify-center gap-1 shadow-xl">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="13" r="7" />
+            <path d="M16 8L19 5" stroke-linecap="round"/>
+          </svg>
+          <span>DROP BOMB</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: TACTICAL HUD, LIVE SPRITE STATE & ROSTER (4 COLUMNS ON DESKTOP) -->
+    <aside class="lg:col-span-4 flex flex-col gap-3 w-full">
+      
+      <!-- LOCAL PLAYER LIVE SPRITE & BOMB-HOLDING STATE MONITOR -->
+      <div class="hud-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span id="localHudTitle" class="text-xs font-mono-tech uppercase tracking-wider text-sky-400 font-bold">Player 1 // Live Rig State</span>
+          <span id="p1AliveBadge" class="px-2 py-0.5 text-[11px] font-mono-tech font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">ACTIVE</span>
+        </div>
+
+        <div class="flex items-center gap-4 bg-slate-950/80 border border-slate-800/90 rounded-xl p-3">
+          <!-- Zoomed Live Character Sprite Preview Canvas -->
+          <div class="relative w-20 h-20 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+            <canvas id="spritePreviewCanvas" width="48" height="48" class="pixelated w-16 h-16"></canvas>
+            <div class="absolute bottom-1 right-1 px-1 py-0.2 bg-slate-950/90 rounded text-[9px] font-mono-tech text-slate-400">24x24px</div>
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-slate-400 mb-0.5"> Dynamic Hand Rig</div>
+            <div id="hudBombHoldState" class="text-sm font-extrabold text-amber-300 tracking-tight truncate">
+              HOLDING BOMB IN HAND
+            </div>
+            <p id="hudBombHoldDesc" class="text-[11px] text-slate-400 leading-snug mt-1">
+              Bomb ready. Placing a bomb switches character to unarmed sprite until detonation.
+            </p>
+          </div>
+        </div>
+
+        <!-- Player 1 Powerup & Combat Telemetry -->
+        <div class="grid grid-cols-3 gap-2 mt-3">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-center">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">Bombs Ready</div>
+            <div id="statBombs" class="text-lg font-extrabold text-cyan-300 font-mono-tech mt-0.5">1 / 1</div>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-center">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">Blast Radius</div>
+            <div id="statRange" class="text-lg font-extrabold text-amber-300 font-mono-tech mt-0.5">2 Tiles</div>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-center">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">Move Speed</div>
+            <div id="statSpeed" class="text-lg font-extrabold text-emerald-300 font-mono-tech mt-0.5">100%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SURVIVING CONTESTANTS ROSTER -->
+      <div class="hud-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="text-xs font-mono-tech uppercase tracking-wider text-slate-300 font-bold">Island Roster (4 Contestants)</span>
+          <span id="rosterAliveCount" class="text-xs font-mono-tech text-sky-300 font-semibold">4 Alive</span>
+        </div>
+        <div id="rosterContainer" class="space-y-2">
+          <!-- Dynamically populated cards for P1 + 3 AI Bots -->
+        </div>
+      </div>
+
+      <!-- TERRAIN & POWERUP LEGEND -->
+      <div class="hud-card rounded-2xl p-4">
+        <div class="text-xs font-mono-tech uppercase tracking-wider text-slate-300 font-bold mb-2.5">Beach Terrain &amp; Powerups</div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="flex items-center gap-2 bg-slate-900/75 border border-slate-800/80 rounded-lg p-2">
+            <canvas id="legendPalm" width="48" height="48" class="pixelated w-8 h-8 shrink-0 rounded bg-amber-950/30"></canvas>
+            <div>
+              <div class="font-bold text-emerald-300">Palm Tree</div>
+              <div class="text-[10px] text-slate-400">Breakable &bull; Drops Loot</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-slate-900/75 border border-slate-800/80 rounded-lg p-2">
+            <canvas id="legendRock" width="48" height="48" class="pixelated w-8 h-8 shrink-0 rounded bg-slate-800/40"></canvas>
+            <div>
+              <div class="font-bold text-slate-200">Coastal Rock</div>
+              <div class="text-[10px] text-slate-400">Breakable &bull; Drops Loot</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-slate-900/75 border border-slate-800/80 rounded-lg p-2">
+            <canvas id="legendPillar" width="48" height="48" class="pixelated w-8 h-8 shrink-0 rounded bg-slate-800/40"></canvas>
+            <div>
+              <div class="font-bold text-amber-200">Coral Pillar</div>
+              <div class="text-[10px] text-slate-400">Indestructible Cover</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-slate-900/75 border border-slate-800/80 rounded-lg p-2">
+            <canvas id="legendWater" width="48" height="48" class="pixelated w-8 h-8 shrink-0 rounded bg-sky-950/60"></canvas>
+            <div>
+              <div class="font-bold text-sky-300">4-Tile Ocean</div>
+              <div class="text-[10px] text-slate-400">Animated Wave Barrier</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Powerup Row -->
+        <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-slate-800/80 text-[11px]">
+          <div class="flex items-center gap-1.5 bg-slate-900/60 rounded-lg p-1.5">
+            <canvas id="legendPowBomb" width="48" height="48" class="pixelated w-6 h-6 shrink-0"></canvas>
+            <span class="text-cyan-300 font-semibold">+1 Bomb</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/60 rounded-lg p-1.5">
+            <canvas id="legendPowFlame" width="48" height="48" class="pixelated w-6 h-6 shrink-0"></canvas>
+            <span class="text-amber-300 font-semibold">+1 Blast</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/60 rounded-lg p-1.5">
+            <canvas id="legendPowSpeed" width="48" height="48" class="pixelated w-6 h-6 shrink-0"></canvas>
+            <span class="text-emerald-300 font-semibold">+Speed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTROLS & ENGINE MEMORY ARCHITECTURE -->
+      <div class="hud-card rounded-2xl p-4 text-xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="font-mono-tech uppercase tracking-wider text-slate-300 font-bold">Controls &amp; AI Telemetry</span>
+          <span id="hudAccumulator" class="font-mono-tech text-[11px] text-slate-400">dt: 16.67ms</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+          <div class="bg-slate-900/70 rounded px-2 py-1 border border-slate-800 flex justify-between">
+            <span class="text-slate-400">Move:</span>
+            <span class="font-mono-tech font-bold text-white">WASD / Arrows</span>
+          </div>
+          <div class="bg-slate-900/70 rounded px-2 py-1 border border-slate-800 flex justify-between">
+            <span class="text-slate-400">Place Bomb:</span>
+            <span class="font-mono-tech font-bold text-amber-300">Space / Enter</span>
+          </div>
+          <div class="bg-slate-900/70 rounded px-2 py-1 border border-slate-800 flex justify-between">
+            <span class="text-slate-400">Online Lobby:</span>
+            <span class="font-mono-tech font-bold text-cyan-300">Key [M]</span>
+          </div>
+          <div class="bg-slate-900/70 rounded px-2 py-1 border border-slate-800 flex justify-between">
+            <span class="text-slate-400">AI Vision / Reset:</span>
+            <span class="font-mono-tech font-bold text-emerald-300">[V] / [R] / [P]</span>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- MODAL: ONLINE MULTIPLAYER ROOM CODE LOBBY -->
+  <div id="mpModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="hud-card rounded-2xl max-w-2xl w-full flex flex-col border border-cyan-400/30 shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/70">
+        <div class="flex items-center gap-2.5">
+          <span id="mpModalDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div>
+            <h3 class="text-base font-extrabold text-white uppercase tracking-wide">Online Coastline Lobby // P2P Room Sync</h3>
+            <p class="text-xs text-slate-400">Works directly on Google Sites (<code class="text-cyan-300">sites.google.com</code>) &amp; any browser via WebRTC Room Codes.</p>
+          </div>
+        </div>
+        <button id="btnCloseMp" class="game-btn px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 text-xs font-bold">
+          Close [ESC]
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-5 space-y-4 overflow-y-auto max-h-[82vh]">
+        <!-- Status Banner -->
+        <div id="mpStatusBanner" class="rounded-xl bg-slate-900/90 border border-slate-800 px-4 py-2.5 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-mono-tech uppercase text-slate-400">NETWORK MODE:</span>
+            <span id="mpStatusText" class="font-mono-tech font-bold text-cyan-300">SOLO ARENA (1 HUMAN + 3 AI BOTS)</span>
+          </div>
+          <span id="mpPingBadge" class="font-mono-tech text-[11px] text-emerald-400">60Hz Deterministic</span>
+        </div>
+
+        <!-- Host vs Join Split Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- HOST A ROOM CARD -->
+          <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="text-xs font-mono-tech uppercase text-cyan-400 font-bold mb-1">1. Host a Match</div>
+              <p class="text-xs text-slate-400 leading-relaxed">Generate a 5-letter Room Code to share with friends on your Google Site. Empty slots can be filled by AI Bots.</p>
+            </div>
+
+            <div id="hostRoomCodeBox" class="hidden bg-slate-950 border border-cyan-500/40 rounded-xl p-2.5 flex items-center justify-between">
+              <div>
+                <div class="text-[10px] font-mono-tech uppercase text-slate-400">ROOM CODE</div>
+                <div id="hostRoomCodeDisplay" class="text-xl font-mono-tech font-extrabold tracking-widest text-amber-300">-----</div>
+              </div>
+              <button id="btnCopyRoomCode" class="game-btn px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 text-xs font-mono-tech font-bold">
+                Copy Code
+              </button>
+            </div>
+
+            <label class="flex items-center justify-between text-xs text-slate-300 bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 cursor-pointer">
+              <span>Fill open slots with AI Bots</span>
+              <input id="chkFillAi" type="checkbox" checked class="accent-cyan-400 w-4 h-4 rounded cursor-pointer" />
+            </label>
+
+            <button id="btnCreateRoom" class="game-btn w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider">
+              Create Room &amp; Host
+            </button>
+          </div>
+
+          <!-- JOIN A ROOM CARD -->
+          <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="text-xs font-mono-tech uppercase text-amber-400 font-bold mb-1">2. Join Friend's Room</div>
+              <p class="text-xs text-slate-400 leading-relaxed">Enter the 5-letter Room Code shared by the Host to jump straight into their island arena.</p>
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-mono-tech uppercase text-slate-400 mb-1">ENTER 5-LETTER ROOM CODE</label>
+              <input id="inpJoinCode" type="text" maxlength="6" placeholder="E.G. COVE7" class="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-center font-mono-tech text-lg font-extrabold tracking-widest text-white uppercase outline-none" />
+            </div>
+
+            <button id="btnJoinRoom" class="game-btn w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider">
+              Join Room
+            </button>
+          </div>
+        </div>
+
+        <!-- LIVE 4-SLOT CONTESTANT LOBBY TABLE -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="text-xs font-mono-tech uppercase tracking-wider text-slate-300 font-bold">Arena Contestant Slots (Max 4 Players)</span>
+            <div class="flex items-center gap-2">
+              <button id="btnSimulateJoin" class="hidden game-btn px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 text-[11px] font-semibold">
+                + Simulate Friend Join
+              </button>
+              <button id="btnLeaveRoom" class="hidden game-btn px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-400/30 text-[11px] font-semibold">
+                Disconnect (Go Solo)
+              </button>
+              <button id="btnStartMpMatch" class="hidden game-btn px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px] uppercase">
+                Launch / Sync Match Now
+              </button>
+            </div>
+          </div>
+          <div id="mpSlotsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Google Sites Embed Tip -->
+        <div class="rounded-xl bg-sky-950/40 border border-sky-500/25 px-3.5 py-2.5 text-[11px] text-slate-300 flex items-start gap-2.5">
+          <svg class="w-4 h-4 text-sky-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+          </svg>
+          <div>
+            <span class="font-bold text-sky-300">Sharing on Google Sites:</span> Paste this file into <span class="font-mono-tech text-white">Insert &rarr; Embed &rarr; Embed Code</span> on <span class="font-mono-tech text-white">sites.google.com</span>. One player clicks <strong>Create Room &amp; Host</strong> and shares the 5-letter code with friends on the site!
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: OFFSCREEN PRE-RENDERED SPRITE ATLAS INSPECTOR -->
+  <div id="atlasModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="hud-card rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col border border-indigo-400/30 shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-extrabold text-white uppercase tracking-wide">Offscreen Pre-Baked Pixel Art Atlas Buffer</h3>
+          <p class="text-xs text-slate-400">All sprites (24x24 logical grid @ 2x integer scale = 48x48px tiles) are synthesized once at boot. Gameplay uses strictly zero-allocation <code class="text-cyan-300">ctx.drawImage()</code> blits.</p>
+        </div>
+        <button id="btnCloseAtlas" class="game-btn px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-400/40 text-xs font-bold">
+          Close [ESC]
+        </button>
+      </div>
+      <div class="p-5 overflow-auto flex-1 bg-slate-950/90 flex flex-col items-center gap-4">
+        <div class="w-full flex flex-wrap gap-2 text-xs font-mono-tech text-slate-300 justify-center">
+          <span class="px-2.5 py-1 rounded bg-slate-900 border border-slate-800">Row 0: Animated Deep &amp; Shallow Ocean Waves (8 Frames)</span>
+          <span class="px-2.5 py-1 rounded bg-slate-900 border border-slate-800">Row 1: Shoreline Foam Edges, Sand Variants, Pillars, Swaying Palms &amp; Rocks</span>
+          <span class="px-2.5 py-1 rounded bg-slate-900 border border-slate-800">Row 2-3: Disintegrating Obstacles, Pulsing Bombs, Powerups &amp; Plasma Flame Beams</span>
+          <span class="px-2.5 py-1 rounded bg-slate-900 border border-slate-800">Rows 4-11: 4 Characters x (Armed Bomb-Holding Set + Unarmed Swinging-Arm Set)</span>
+        </div>
+        <div class="border-2 border-slate-800 rounded-xl p-2 bg-[#090d16] overflow-auto max-w-full">
+          <canvas id="atlasInspectorCanvas" class="pixelated block"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * COASTLINE BLASTERS - DETERMINISTIC 60HZ PIXEL-ART ARENA ENGINE
+     * ============================================================================
+     * Architecture Highlights:
+     * 1. Fixed 60Hz Deterministic Logic Loop (FIXED_DT = 1000 / 60 ms) decoupled
+     *    from requestAnimationFrame with render state interpolation (alpha).
+     * 2. Contiguous Flat Uint8Array Buffers for Tile Map, Sand Decor, Powerups,
+     *    and AI Danger/Flame Lookup (23 x 21 = 483 cells; O(1) index arithmetic).
+     * 3. Pre-Allocated Object Pools for Bombs (32), Explosions (64), Breaking
+     *    Obstacles (64), Shockwave Rings (32), and Particles (600). Zero runtime
+     *    heap allocations or garbage collection spikes during gameplay.
+     * 4. Offscreen Pre-Rendered Pixel-Art Sprite Atlas (24x24 pixel art rendered
+     *    at 2x crisp integer scale = 48x48px per cell).
+     * 5. Dual Character Sprite Rigs: Each character has a full 16-frame directional
+     *    walk sheet HOLDING A BOMB and a full 16-frame sheet UNARMED (empty-handed).
+     *    Placing a bomb immediately switches the character to the unarmed sprite
+     *    until their placed bomb detonates and returns to their hands.
+     * ============================================================================
+     */
+
+    (function () {
+      'use strict';
+
+      // --------------------------------------------------------------------------
+      // 1. GRID, TIMING & MEMORY CONSTANTS
+      // --------------------------------------------------------------------------
+      const GRID_W = 23;               // 15 playable + 4 left water + 4 right water
+      const GRID_H = 21;               // 13 playable + 4 top water + 4 bottom water
+      const BORDER = 4;                // 4-block thick impassable animated water barrier
+      const PLAY_MIN_X = BORDER;       // 4
+      const PLAY_MAX_X = GRID_W - BORDER - 1; // 18 (15 tiles wide: 4..18)
+      const PLAY_MIN_Y = BORDER;       // 4
+      const PLAY_MAX_Y = GRID_H - BORDER - 1; // 16 (13 tiles high: 4..16)
+      const GRID_SIZE = GRID_W * GRID_H; // 483 contiguous cells
+
+      const PIXEL_GRID = 24;           // 24x24 pixel-art resolution per tile
+      const PIXEL_SCALE = 2;           // 2x integer magnification -> 48x48px per tile
+      const TILE_PX = PIXEL_GRID * PIXEL_SCALE; // 48px
+
+      const TICK_HZ = 60;
+      const FIXED_DT = 1000 / TICK_HZ; // 16.6666667 ms per deterministic tick
+      const MAX_FRAME_DELTA = 100;     // Clamp spiral of death on tab switch
+
+      // Tile Type IDs (stored in tileMap Uint8Array)
+      const TILE_SAND = 0;
+      const TILE_WATER_DEEP = 1;
+      const TILE_WATER_SHALLOW = 2;
+      const TILE_PILLAR = 3;
+      const TILE_PALM = 4;
+      const TILE_ROCK = 5;
+
+      // Powerup Type IDs (stored in powerupMap Uint8Array)
+      const POW_NONE = 0;
+      const POW_BOMB = 1;
+      const POW_FLAME = 2;
+      const POW_SPEED = 3;
+
+      // Directions
+      const DIR_DOWN = 0;
+      const DIR_UP = 1;
+      const DIR_LEFT = 2;
+      const DIR_RIGHT = 3;
+      const DIR_DX = [0, 0, -1, 1];
+      const DIR_DY = [1, -1, 0, 0];
+
+      // Particle Types
+      const PART_SAND = 0;
+      const PART_LEAF = 1;
+      const PART_ROCK = 2;
+      const PART_EMBER = 3;
+      const PART_SMOKE = 4;
+      const PART_SPARK = 5;
+
+      // --------------------------------------------------------------------------
+      // 2. FLAT CONTIGUOUS TYPED ARRAYS (O(1) ACCESS, ZERO GC)
+      // --------------------------------------------------------------------------
+      const tileMap = new Uint8Array(GRID_SIZE);
+      const sandVariantMap = new Uint8Array(GRID_SIZE);
+      const powerupMap = new Uint8Array(GRID_SIZE);
+      // dangerMap: 0 = safe, 1 = threatened by ticking bomb, 2 = active lethal flame
+      const dangerMap = new Uint8Array(GRID_SIZE);
+      // bombIndexMap: stores (bombPoolIndex + 1), or 0 if no bomb on tile
+      const bombIndexMap = new Uint8Array(GRID_SIZE);
+
+      // Upgraded Zero-Allocation AI Engine Buffers (512 contiguous slots)
+      // dangerTicksMap: 0 = safe, 1 = active lethal flame, >1 = exact ticks until bomb blast hits tile (with chain-reaction propagation)
+      const dangerTicksMap = new Uint16Array(512);
+      // simDangerMap: scratch buffer used to simulate placing a hypothetical bomb at (gx, gy) before committing
+      const simDangerMap = new Uint8Array(512);
+      // Binary Min-Heap & Weighted A* Buffers
+      const astarG = new Uint16Array(512);
+      const astarF = new Uint16Array(512);
+      const astarParent = new Int16Array(512);
+      const astarClosed = new Uint8Array(512);
+      const astarHeap = new Uint16Array(512);
+      // Time-Aware Escape BFS Buffers
+      const bfsQueue = new Uint16Array(512);
+      const bfsDist = new Uint8Array(512);
+      const bfsFirstDir = new Int8Array(512);
+      const bfsVisited = new Uint8Array(512);
+
+      function idx(gx, gy) {
+        return gy * GRID_W + gx;
+      }
+
+      function inBounds(gx, gy) {
+        return gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H;
+      }
+
+      // --------------------------------------------------------------------------
+      // 3. WEB AUDIO SYNTHESIZER (PROCEDURAL RETRO BEACH SFX - NO EXTERNAL FILES)
+      // --------------------------------------------------------------------------
+      class RetroSoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+        }
+
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        playBombPlace() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(190, now);
+          osc.frequency.exponentialRampToValueAtTime(85, now + 0.09);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        }
+
+        playExplosion() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          // Low punchy sub-bass drop
+          const osc = this.ctx.createOscillator();
+          const oscGain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(130, now);
+          osc.frequency.exponentialRampToValueAtTime(28, now + 0.38);
+          oscGain.gain.setValueAtTime(0.28, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+          osc.connect(oscGain);
+          oscGain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.41);
+
+          // Filtered noise burst
+          const bufferSize = this.ctx.sampleRate * 0.35;
+          const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const output = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+          }
+          const whiteNoise = this.ctx.createBufferSource();
+          whiteNoise.buffer = noiseBuffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(950, now);
+          filter.frequency.exponentialRampToValueAtTime(140, now + 0.34);
+
+          const noiseGain = this.ctx.createGain();
+          noiseGain.gain.setValueAtTime(0.24, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+          whiteNoise.connect(filter);
+          filter.connect(noiseGain);
+          noiseGain.connect(this.ctx.destination);
+          whiteNoise.start(now);
+          whiteNoise.stop(now + 0.35);
+        }
+
+        playPowerup() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          for (let i = 0; i < notes.length; i++) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            const start = now + i * 0.045;
+            osc.frequency.setValueAtTime(notes[i], start);
+            gain.gain.setValueAtTime(0.09, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.08);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.085);
+          }
+        }
+
+        playEliminated() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(380, now);
+          osc.frequency.linearRampToValueAtTime(110, now + 0.28);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.31);
+        }
+      }
+
+      const sfx = new RetroSoundEngine();
+
+      // --------------------------------------------------------------------------
+      // 4. OFFSCREEN PRE-RENDERED PIXEL ART ATLAS GENERATOR
+      // --------------------------------------------------------------------------
+      // Atlas Layout (16 columns wide x 12 rows high = 768x576 pixels):
+      // Each cell is 48x48 pixels (24x24 logical pixel art drawn with 2x2 blocks).
+      // Row 0: Cols 0..7  = Deep Ocean Water (8 anim frames)
+      //        Cols 8..15 = Shallow Coastal Water (8 anim frames)
+      // Row 1: Cols 0..3  = Shoreline Foam Overlays (Top, Bottom, Left, Right)
+      //        Cols 4..7  = Beach Sand Variants (0..3)
+      //        Col  8     = Indestructible Coral/Sandstone Pillar
+      //        Cols 9..12 = Swaying Palm Tree (4 anim frames)
+      //        Cols 13..14= Coastal Layered Rock (2 subtle shimmer frames)
+      // Row 2: Cols 0..5  = Disintegrating Palm Tree (6 frames)
+      //        Cols 6..11 = Shattering Beach Rock (6 frames)
+      //        Cols 12..14= Powerups (Bomb+, Flame+, Speed+)
+      // Row 3: Cols 0..5  = Pulsing Bomb with Burning Fuse (6 frames)
+      //        Cols 6..12 = Explosion Beam Parts (Center, Horiz, Vert, EndUp, EndDown, EndLeft, EndRight)
+      // Rows 4..11 (2 rows per character for 4 characters):
+      //   Char i Row A (4 + i*2): HOLDING BOMB IN HAND (16 frames: Down 0..3, Up 4..7, Left 8..11, Right 12..15)
+      //   Char i Row B (5 + i*2): UNARMED / EMPTY-HANDED (16 frames: Down 0..3, Up 4..7, Left 8..11, Right 12..15)
+
+      const ATLAS_COLS = 16;
+      const ATLAS_ROWS = 12;
+      const atlasCanvas = document.createElement('canvas');
+      atlasCanvas.width = ATLAS_COLS * TILE_PX;
+      atlasCanvas.height = ATLAS_ROWS * TILE_PX;
+      const atlasCtx = atlasCanvas.getContext('2d');
+      atlasCtx.imageSmoothingEnabled = false;
+
+      // Helper to plot a single logical pixel (px, py in 0..23) inside atlas cell (col, row)
+      function plotPx(col, row, px, py, color) {
+        if (px < 0 || px >= PIXEL_GRID || py < 0 || py >= PIXEL_GRID) return;
+        atlasCtx.fillStyle = color;
+        atlasCtx.fillRect(
+          col * TILE_PX + px * PIXEL_SCALE,
+          row * TILE_PX + py * PIXEL_SCALE,
+          PIXEL_SCALE,
+          PIXEL_SCALE
+        );
+      }
+
+      // Helper to fill a logical rectangle inside atlas cell (col, row)
+      function fillRectPx(col, row, px, py, w, h, color) {
+        atlasCtx.fillStyle = color;
+        atlasCtx.fillRect(
+          col * TILE_PX + px * PIXEL_SCALE,
+          row * TILE_PX + py * PIXEL_SCALE,
+          w * PIXEL_SCALE,
+          h * PIXEL_SCALE
+        );
+      }
+
+      function buildSpriteAtlas() {
+        atlasCtx.clearRect(0, 0, atlasCanvas.width, atlasCanvas.height);
+
+        // --- 4.1: ROW 0: ANIMATED WATER TILES (8 FRAMES DEEP + 8 FRAMES SHALLOW) ---
+        for (let f = 0; f < 8; f++) {
+          const phaseShift = f * 3; // 8 * 3 = 24 logical pixels full seamless scroll cycle!
+
+          // Deep Ocean Water (Row 0, Col f)
+          fillRectPx(f, 0, 0, 0, 24, 24, '#0369a1');
+          for (let y = 0; y < 24; y++) {
+            for (let x = 0; x < 24; x++) {
+              const wx = (x + phaseShift) % 24;
+              const wy = (y + Math.floor(f * 1.5)) % 24;
+              const wave1 = Math.sin((wx / 24) * Math.PI * 2 + (y / 6)) * 2;
+              if ((y + Math.round(wave1)) % 8 === 0) {
+                plotPx(f, 0, x, y, '#0284c7');
+              } else if ((y + Math.round(wave1)) % 8 === 1 && (wx % 6 < 4)) {
+                plotPx(f, 0, x, y, '#38bdf8');
+              }
+              // Specular white crest glints
+              if (((wx + wy) % 12 === 0) && ((wx * 3 + y) % 7 === 0)) {
+                plotPx(f, 0, x, y, '#bae6fd');
+              }
+            }
+          }
+
+          // Shallow Coastal Water (Row 0, Col 8 + f)
+          const scol = 8 + f;
+          fillRectPx(scol, 0, 0, 0, 24, 24, '#0ea5e9');
+          for (let y = 0; y < 24; y++) {
+            for (let x = 0; x < 24; x++) {
+              const wx = (x + phaseShift) % 24;
+              const wave = Math.sin((wx / 24) * Math.PI * 2) * 1.8;
+              const band = (y + Math.round(wave) + 24) % 6;
+              if (band === 0) {
+                plotPx(scol, 0, x, y, '#38bdf8');
+              } else if (band === 1 && wx % 5 !== 0) {
+                plotPx(scol, 0, x, y, '#7dd3fc');
+              }
+              if ((wx % 8 === 0) && ((y + f) % 6 === 0)) {
+                plotPx(scol, 0, x, y, '#e0f2fe');
+              }
+            }
+          }
+        }
+
+        // --- 4.2: ROW 1, COLS 0..3: SHORELINE FOAM OVERLAYS (TOP, BOTTOM, LEFT, RIGHT) ---
+        // Drawn on water tiles adjacent to the playable beach sand
+        for (let dir = 0; dir < 4; dir++) {
+          for (let i = 0; i < 24; i++) {
+            const waveOffset = Math.round(Math.sin((i / 24) * Math.PI * 4) * 1.2);
+            const depth = 3 + waveOffset;
+            for (let d = 0; d < depth; d++) {
+              const color = d === 0 ? '#ffffff' : (d === 1 ? '#e0f2fe' : '#7dd3fc');
+              if (dir === 0) plotPx(0, 1, i, 23 - d, color); // Bottom edge of top water (touches sand below)
+              if (dir === 1) plotPx(1, 1, i, d, color);      // Top edge of bottom water (touches sand above)
+              if (dir === 2) plotPx(2, 1, 23 - d, i, color); // Right edge of left water (touches sand right)
+              if (dir === 3) plotPx(3, 1, d, i, color);      // Left edge of right water (touches sand left)
+            }
+          }
+        }
+
+        // --- 4.3: ROW 1, COLS 4..7: WARM BEACH SAND VARIANTS ---
+        for (let v = 0; v < 4; v++) {
+          const scol = 4 + v;
+          fillRectPx(scol, 1, 0, 0, 24, 24, '#f6d58e');
+          // Subtle warm sand grain & wind ripples
+          for (let y = 0; y < 24; y++) {
+            for (let x = 0; x < 24; x++) {
+              const hash = (x * 37 + y * 17 + v * 53) % 29;
+              if (hash === 0) plotPx(scol, 1, x, y, '#ecc06c');
+              else if (hash === 1) plotPx(scol, 1, x, y, '#fae2ac');
+              else if (hash === 2 && y % 4 === 0) plotPx(scol, 1, x, y, '#e5b55c');
+            }
+          }
+          // Variant-specific tiny coastal details
+          if (v === 1) {
+            // Cute tiny seashell
+            plotPx(scol, 1, 6, 17, '#fff1f2');
+            plotPx(scol, 1, 7, 17, '#fecdd3');
+            plotPx(scol, 1, 6, 18, '#fda4af');
+            plotPx(scol, 1, 7, 18, '#fb7185');
+          } else if (v === 2) {
+            // Smooth coastal pebbles
+            plotPx(scol, 1, 16, 7, '#d6b065');
+            plotPx(scol, 1, 17, 7, '#c2994e');
+            plotPx(scol, 1, 15, 18, '#d6b065');
+          } else if (v === 3) {
+            // Tiny coral starfish accent
+            plotPx(scol, 1, 11, 11, '#fb923c');
+            plotPx(scol, 1, 10, 11, '#fdba74');
+            plotPx(scol, 1, 12, 11, '#fdba74');
+            plotPx(scol, 1, 11, 10, '#fdba74');
+            plotPx(scol, 1, 11, 12, '#ea580c');
+          }
+        }
+
+        // --- 4.4: ROW 1, COL 8: INDESTRUCTIBLE SANDSTONE / CORAL PILLAR ---
+        {
+          const c = 8, r = 1;
+          // Base shadow on sand
+          fillRectPx(c, r, 1, 21, 22, 3, 'rgba(120, 75, 20, 0.45)');
+          // Outer bevel block
+          fillRectPx(c, r, 1, 1, 22, 21, '#78716c');
+          // Top sunlit sandstone face
+          fillRectPx(c, r, 2, 2, 20, 15, '#d6d3d1');
+          fillRectPx(c, r, 3, 3, 18, 13, '#e7e5e4');
+          // Inner carved coastal emblem
+          fillRectPx(c, r, 6, 5, 12, 9, '#a8a29e');
+          fillRectPx(c, r, 7, 6, 10, 7, '#d6d3d1');
+          // Decorative wave relief inside pillar
+          for (let x = 8; x <= 15; x++) {
+            plotPx(c, r, x, 9 + (x % 2), '#78716c');
+          }
+          // Front 3D chiseled wall face
+          fillRectPx(c, r, 2, 17, 20, 4, '#a8a29e');
+          fillRectPx(c, r, 2, 19, 20, 2, '#57534e');
+          // Corner rivets / coral barnacles
+          plotPx(c, r, 4, 4, '#f59e0b');
+          plotPx(c, r, 19, 4, '#f59e0b');
+          plotPx(c, r, 4, 14, '#0ea5e9');
+          plotPx(c, r, 19, 14, '#0ea5e9');
+        }
+
+        // --- 4.5: ROW 1, COLS 9..12: BREAKABLE PALM TREE (4 SWAYING FRAMES) ---
+        for (let f = 0; f < 4; f++) {
+          const c = 9 + f, r = 1;
+          const sway = (f === 1) ? 1 : (f === 3 ? -1 : 0);
+
+          // Ground shadow
+          fillRectPx(c, r, 4, 20, 16, 3, 'rgba(100, 60, 15, 0.38)');
+
+          // Curved segmented coconut trunk
+          for (let ty = 10; ty <= 21; ty++) {
+            const curve = Math.round(Math.sin(((21 - ty) / 11) * 1.2) * 2) + (ty < 14 ? sway : 0);
+            const tx = 10 + curve;
+            const w = ty > 18 ? 5 : 4;
+            fillRectPx(c, r, tx, ty, w, 1, ty % 2 === 0 ? '#92400e' : '#b45309');
+            plotPx(c, r, tx, ty, '#d97706'); // Sunlit bark edge
+            plotPx(c, r, tx + w - 1, ty, '#78350f'); // Shaded bark edge
+          }
+
+          // Coconuts cluster under crown
+          const cx = 12 + sway;
+          fillRectPx(c, r, cx - 2, 9, 2, 2, '#451a03');
+          fillRectPx(c, r, cx + 1, 9, 2, 2, '#78350f');
+
+          // Lush Tropical Fronds (radiating arcs)
+          const frondOffsets = [
+            // Left fronds
+            [-7, -1], [-6, -2], [-5, -2], [-4, -2], [-3, -1], [-2, -1], [-8, 0], [-9, 1],
+            [-6, 1], [-5, 0], [-4, 0], [-7, 2], [-8, 3],
+            // Right fronds
+            [3, -1], [4, -2], [5, -2], [6, -2], [7, -1], [8, 0], [9, 1],
+            [4, 0], [5, 0], [6, 1], [7, 2], [8, 3],
+            // Top & center crown
+            [-2, -4], [-1, -5], [0, -5], [1, -5], [2, -4],
+            [-3, -3], [-2, -3], [-1, -3], [0, -3], [1, -3], [2, -3], [3, -3],
+            [-1, -2], [0, -2], [1, -2], [0, -1], [-1, 0], [1, 0], [0, 1], [0, 2]
+          ];
+          for (let i = 0; i < frondOffsets.length; i++) {
+            const ox = frondOffsets[i][0];
+            const oy = frondOffsets[i][1];
+            const px = cx + ox;
+            const py = 7 + oy + (ox > 3 && f === 1 ? 1 : 0) + (ox < -3 && f === 3 ? 1 : 0);
+            let col = '#16a34a';
+            if (oy <= -3 || (ox >= -2 && ox <= 2 && oy <= -1)) col = '#4ade80'; // Sunlit top crown
+            else if (oy >= 1) col = '#15803d'; // Shaded lower tips
+            else col = '#22c55e';
+            plotPx(c, r, px, py, col);
+          }
+        }
+
+        // --- 4.6: ROW 1, COLS 13..14: BREAKABLE BEACH ROCK BOULDER ---
+        for (let f = 0; f < 2; f++) {
+          const c = 13 + f, r = 1;
+          // Sand shadow
+          fillRectPx(c, r, 2, 19, 20, 4, 'rgba(90, 55, 15, 0.42)');
+          // Layered coastal boulder silhouette
+          fillRectPx(c, r, 4, 8, 16, 12, '#475569');
+          fillRectPx(c, r, 3, 11, 18, 9, '#334155');
+          fillRectPx(c, r, 6, 5, 12, 14, '#64748b');
+          fillRectPx(c, r, 7, 4, 9, 4, '#94a3b8');
+          // Bright top mineral highlights
+          fillRectPx(c, r, 8, 5, 6, 2, '#cbd5e1');
+          // Dark crevices & cracks
+          plotPx(c, r, 9, 10, '#1e293b');
+          plotPx(c, r, 10, 11, '#1e293b');
+          plotPx(c, r, 11, 11, '#1e293b');
+          plotPx(c, r, 12, 12, '#1e293b');
+          plotPx(c, r, 15, 14, '#1e293b');
+          plotPx(c, r, 16, 15, '#1e293b');
+          // Coastal moss & tide barnacles
+          fillRectPx(c, r, 5, 15, 3, 2, '#10b981');
+          fillRectPx(c, r, 15, 8, 2, 2, '#34d399');
+          if (f === 1) {
+            plotPx(c, r, 10, 5, '#ffffff');
+          }
+        }
+
+        // --- 4.7: ROW 2, COLS 0..11: OBSTACLE DESTRUCTION ANIMATIONS ---
+        // Cols 0..5: Palm Tree disintegrating
+        for (let f = 0; f < 6; f++) {
+          const c = f, r = 2;
+          const spread = f * 2;
+          const count = 18 - f * 2;
+          for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2 + f * 0.4;
+            const dist = 2 + spread + (i % 3) * 2;
+            const px = Math.round(12 + Math.cos(angle) * dist);
+            const py = Math.round(12 + Math.sin(angle) * dist);
+            const color = i % 2 === 0 ? '#22c55e' : (i % 3 === 0 ? '#4ade80' : '#b45309');
+            fillRectPx(c, r, px, py, 2, 2, color);
+          }
+        }
+        // Cols 6..11: Beach Rock shattering
+        for (let f = 0; f < 6; f++) {
+          const c = 6 + f, r = 2;
+          const spread = f * 2;
+          const count = 16 - f * 2;
+          for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2 - f * 0.3;
+            const dist = 2 + spread + (i % 3) * 2;
+            const px = Math.round(12 + Math.cos(angle) * dist);
+            const py = Math.round(12 + Math.sin(angle) * dist);
+            const color = i % 2 === 0 ? '#94a3b8' : '#475569';
+            fillRectPx(c, r, px, py, 2, 2, color);
+          }
+        }
+
+        // --- 4.8: ROW 2, COLS 12..14: POWERUP ICONS ---
+        const powConfigs = [
+          { col: 12, border: '#0ea5e9', bg: '#0c4a6e', accent: '#38bdf8' }, // Extra Bomb
+          { col: 13, border: '#f59e0b', bg: '#78350f', accent: '#fde047' }, // Blast Radius
+          { col: 14, border: '#10b981', bg: '#064e3b', accent: '#6ee7b7' }  // Speed Sneaker
+        ];
+        for (let p = 0; p < 3; p++) {
+          const cfg = powConfigs[p];
+          const c = cfg.col, r = 2;
+          // Outer badge frame
+          fillRectPx(c, r, 3, 3, 18, 18, cfg.border);
+          fillRectPx(c, r, 4, 4, 16, 16, cfg.bg);
+          plotPx(c, r, 5, 5, '#ffffff');
+          if (p === 0) {
+            // Bomb icon inside tile
+            fillRectPx(c, r, 8, 9, 8, 8, '#0f172a');
+            fillRectPx(c, r, 7, 10, 10, 6, '#1e293b');
+            fillRectPx(c, r, 9, 10, 2, 2, '#38bdf8');
+            plotPx(c, r, 13, 7, '#fde047');
+            plotPx(c, r, 14, 6, '#fb923c');
+          } else if (p === 1) {
+            // Flame icon inside tile
+            fillRectPx(c, r, 9, 11, 6, 6, '#ef4444');
+            fillRectPx(c, r, 8, 9, 8, 6, '#f97316');
+            fillRectPx(c, r, 10, 6, 4, 8, '#fde047');
+            fillRectPx(c, r, 11, 11, 2, 4, '#ffffff');
+          } else {
+            // Winged Sneaker icon inside tile
+            fillRectPx(c, r, 6, 13, 12, 4, '#34d399');
+            fillRectPx(c, r, 6, 9, 6, 5, '#10b981');
+            fillRectPx(c, r, 6, 16, 12, 2, '#ffffff');
+            fillRectPx(c, r, 13, 8, 4, 2, '#fde047');
+          }
+        }
+
+        // --- 4.9: ROW 3, COLS 0..5: PULSING BOMB SPRITES (6 FRAMES) ---
+        for (let f = 0; f < 6; f++) {
+          const c = f, r = 3;
+          const swell = (f === 2 || f === 5) ? 1 : 0;
+          const hotGlow = (f === 4 || f === 5);
+
+          // Ground shadow
+          fillRectPx(c, r, 5, 19, 14, 3, 'rgba(30, 20, 10, 0.45)');
+
+          // Bomb spherical body
+          const bx = 6 - swell;
+          const by = 7 - swell;
+          const bw = 12 + swell * 2;
+          const bh = 12 + swell * 2;
+
+          fillRectPx(c, r, bx + 2, by, bw - 4, bh, hotGlow ? '#7f1d1d' : '#0f172a');
+          fillRectPx(c, r, bx, by + 2, bw, bh - 4, hotGlow ? '#991b1b' : '#0f172a');
+          fillRectPx(c, r, bx + 1, by + 1, bw - 2, bh - 2, hotGlow ? '#dc2626' : '#1e293b');
+          // Inner body shading
+          fillRectPx(c, r, bx + 2, by + 2, bw - 4, bh - 4, hotGlow ? '#ef4444' : '#334155');
+          // Specular highlight
+          fillRectPx(c, r, bx + 3, by + 3, 3, 3, hotGlow ? '#fef08a' : '#e2e8f0');
+          plotPx(c, r, bx + 3, by + 3, '#ffffff');
+
+          // Fuse cap & burning cord
+          fillRectPx(c, r, 10, by - 1, 4, 2, '#94a3b8');
+          const sparkY = by - 3 + (f % 2);
+          plotPx(c, r, 12, by - 2, '#d97706');
+          // Sizzling spark
+          fillRectPx(c, r, 12, sparkY - 1, 3, 3, '#f97316');
+          plotPx(c, r, 13, sparkY, '#ffffff');
+          plotPx(c, r, 11 + (f % 3), sparkY - 1, '#fde047');
+        }
+
+        // --- 4.10: ROW 3, COLS 6..12: EXPLOSION PLASMA BEAMS ---
+        // 6: Center Core, 7: Horiz Mid, 8: Vert Mid, 9: End Up, 10: End Down, 11: End Left, 12: End Right
+        for (let part = 0; part < 7; part++) {
+          const c = 6 + part, r = 3;
+          for (let y = 0; y < 24; y++) {
+            for (let x = 0; x < 24; x++) {
+              let dist = 99;
+              const dx = x - 11.5;
+              const dy = y - 11.5;
+
+              if (part === 0) {
+                // Center cross union
+                dist = Math.min(Math.abs(dx), Math.abs(dy));
+              } else if (part === 1) {
+                // Horizontal beam
+                dist = Math.abs(dy);
+              } else if (part === 2) {
+                // Vertical beam
+                dist = Math.abs(dx);
+              } else if (part === 3) {
+                // End Up (rounded cap at top)
+                dist = y < 12 ? Math.hypot(dx, dy) : Math.abs(dx);
+              } else if (part === 4) {
+                // End Down
+                dist = y > 11 ? Math.hypot(dx, dy) : Math.abs(dx);
+              } else if (part === 5) {
+                // End Left
+                dist = x < 12 ? Math.hypot(dx, dy) : Math.abs(dy);
+              } else if (part === 6) {
+                // End Right
+                dist = x > 11 ? Math.hypot(dx, dy) : Math.abs(dy);
+              }
+
+              if (dist <= 9.5) {
+                let col = '#db2777'; // Outer vibrant magenta-crimson rim
+                if (dist <= 3.2) col = '#ffffff';      // White-hot plasma core
+                else if (dist <= 5.5) col = '#fef08a'; // Bright solar gold
+                else if (dist <= 7.8) col = '#f97316'; // Vibrant tangerine flame
+                plotPx(c, r, x, y, col);
+              }
+            }
+          }
+        }
+
+        // --- 4.11: ROWS 4..11: CUTE PIXEL-ART REGULAR PEOPLE (4 CHARACTERS) ---
+        // Each character has 2 full rows:
+        //   Row 4 + i*2: HOLDING BOMB IN HAND (Armed state)
+        //   Row 5 + i*2: UNARMED / EMPTY-HANDED (Swinging arms after bomb is placed)
+        const characters = [
+          {
+            name: 'Alex',
+            hair: '#5c2d0c', hairLight: '#854d0e',
+            skin: '#fed7aa',
+            shirt: '#06b6d4', shirtShade: '#0891b2', // Cyan casual tee
+            pants: '#1d4ed8',                         // Blue denim shorts
+            shoes: '#ef4444'                          // Red-white sneakers
+          },
+          {
+            name: 'Maya',
+            hair: '#1e1b4b', hairLight: '#312e81',
+            skin: '#fbcfe8',
+            shirt: '#f43f5e', shirtShade: '#e11d48', // Coral-pink hoodie tee
+            pants: '#38bdf8',                         // Light-wash denim
+            shoes: '#f8fafc'                          // Crisp white sneakers
+          },
+          {
+            name: 'Liam',
+            hair: '#eab308', hairLight: '#fef08a',
+            skin: '#fed7aa',
+            shirt: '#f59e0b', shirtShade: '#d97706', // Sunny gold polo
+            pants: '#78716c',                         // Khaki cargo shorts
+            shoes: '#2563eb'                          // Royal blue sneakers
+          },
+          {
+            name: 'Zoe',
+            hair: '#7c2d12', hairLight: '#c2410c',
+            skin: '#fde68a',
+            shirt: '#a855f7', shirtShade: '#9333ea', // Lavender streetwear tee
+            pants: '#334155',                         // Charcoal shorts
+            shoes: '#10b981'                          // Mint green sneakers
+          }
+        ];
+
+        for (let charIdx = 0; charIdx < 4; charIdx++) {
+          const pal = characters[charIdx];
+          for (let armed = 0; armed <= 1; armed++) {
+            const isHoldingBomb = (armed === 0);
+            const row = 4 + charIdx * 2 + (isHoldingBomb ? 0 : 1);
+
+            for (let dir = 0; dir < 4; dir++) {
+              for (let frame = 0; frame < 4; frame++) {
+                const col = dir * 4 + frame;
+                drawCharacterSprite(col, row, pal, dir, frame, isHoldingBomb);
+              }
+            }
+          }
+        }
+      }
+
+      // Helper to render one cute 24x24 pixel-art character frame into (col, row)
+      function drawCharacterSprite(col, row, pal, dir, frame, isHoldingBomb) {
+        // Walk cycle bob & leg stride offsets (4-frame brisk cycle: 0=neutral, 1=stepA, 2=neutral, 3=stepB)
+        const bobY = (frame === 1 || frame === 3) ? -1 : 0;
+        const step = (frame === 1) ? 1 : (frame === 3 ? -1 : 0);
+
+        // 1. Soft ground shadow on sand
+        fillRectPx(col, row, 6, 20, 12, 3, 'rgba(40, 25, 10, 0.35)');
+
+        // 2. If facing UP and holding bomb, draw the bomb slightly in front (behind torso layer)
+        if (isHoldingBomb && dir === DIR_UP) {
+          drawHeldMiniBomb(col, row, 9, 8 + bobY);
+        }
+
+        // 3. Legs & Sneakers
+        const leftLegY = 17 + (step > 0 ? -1 : 0);
+        const rightLegY = 17 + (step < 0 ? -1 : 0);
+
+        if (dir === DIR_LEFT || dir === DIR_RIGHT) {
+          // Side profile stride
+          const strideA = step * 2;
+          const strideB = -step * 2;
+          // Back leg
+          fillRectPx(col, row, 10 + strideB, 16 + bobY, 3, 3, pal.pants);
+          fillRectPx(col, row, 10 + strideB, 19 + bobY, 4, 2, pal.shoes);
+          // Front leg
+          fillRectPx(col, row, 10 + strideA, 16 + bobY, 3, 3, pal.pants);
+          fillRectPx(col, row, 10 + strideA, 19 + bobY, 4, 2, pal.shoes);
+          plotPx(col, row, 11 + strideA, 20 + bobY, '#ffffff'); // Sneaker sole stripe
+        } else {
+          // Front/Back view legs
+          // Left leg
+          fillRectPx(col, row, 8, 16 + bobY, 3, 2, pal.pants);
+          fillRectPx(col, row, 8, leftLegY + 1, 3, 3, pal.shoes);
+          plotPx(col, row, 8, leftLegY + 3, '#ffffff');
+          // Right leg
+          fillRectPx(col, row, 13, 16 + bobY, 3, 2, pal.pants);
+          fillRectPx(col, row, 13, rightLegY + 1, 3, 3, pal.shoes);
+          plotPx(col, row, 13, rightLegY + 3, '#ffffff');
+        }
+
+        // 4. Casual T-Shirt / Torso
+        fillRectPx(col, row, 7, 11 + bobY, 10, 6, pal.shirt);
+        fillRectPx(col, row, 8, 15 + bobY, 8, 2, pal.shirtShade);
+        // Cute graphic stripe on shirt front
+        if (dir === DIR_DOWN) {
+          fillRectPx(col, row, 9, 12 + bobY, 6, 1, '#ffffff');
+        }
+
+        // 5. Head & Everyday Hair
+        fillRectPx(col, row, 7, 4 + bobY, 10, 7, pal.skin);
+        // Hair crown
+        fillRectPx(col, row, 6, 2 + bobY, 12, 4, pal.hair);
+        fillRectPx(col, row, 8, 2 + bobY, 6, 2, pal.hairLight);
+
+        if (dir === DIR_DOWN) {
+          // Cute pixel eyes & blush
+          fillRectPx(col, row, 8, 7 + bobY, 2, 2, '#0f172a');
+          fillRectPx(col, row, 14, 7 + bobY, 2, 2, '#0f172a');
+          plotPx(col, row, 8, 7 + bobY, '#ffffff');
+          plotPx(col, row, 14, 7 + bobY, '#ffffff');
+          // Sideburns
+          fillRectPx(col, row, 6, 5 + bobY, 1, 4, pal.hair);
+          fillRectPx(col, row, 17, 5 + bobY, 1, 4, pal.hair);
+        } else if (dir === DIR_UP) {
+          // Back of head covered in hair
+          fillRectPx(col, row, 6, 3 + bobY, 12, 7, pal.hair);
+          fillRectPx(col, row, 8, 4 + bobY, 8, 2, pal.hairLight);
+        } else if (dir === DIR_LEFT) {
+          // Facing left profile
+          fillRectPx(col, row, 12, 4 + bobY, 6, 6, pal.hair);
+          fillRectPx(col, row, 8, 7 + bobY, 2, 2, '#0f172a');
+          plotPx(col, row, 8, 7 + bobY, '#ffffff');
+        } else if (dir === DIR_RIGHT) {
+          // Facing right profile
+          fillRectPx(col, row, 6, 4 + bobY, 6, 6, pal.hair);
+          fillRectPx(col, row, 14, 7 + bobY, 2, 2, '#0f172a');
+          plotPx(col, row, 15, 7 + bobY, '#ffffff');
+        }
+
+        // 6. Arms & Dynamic Bomb-Holding vs Unarmed State!
+        if (isHoldingBomb) {
+          // HOLDING BOMB SPRITE SET: Arms raised forward cradling a glossy bomb!
+          if (dir === DIR_DOWN) {
+            // Arms reaching around the bomb in front of chest
+            fillRectPx(col, row, 5, 11 + bobY, 2, 4, pal.shirt);
+            fillRectPx(col, row, 17, 11 + bobY, 2, 4, pal.shirt);
+            drawHeldMiniBomb(col, row, 8, 10 + bobY);
+            // Hands gripping bomb sides
+            fillRectPx(col, row, 6, 13 + bobY, 2, 2, pal.skin);
+            fillRectPx(col, row, 16, 13 + bobY, 2, 2, pal.skin);
+          } else if (dir === DIR_UP) {
+            // Arms raised forward holding bomb in front of torso
+            fillRectPx(col, row, 5, 10 + bobY, 2, 4, pal.shirt);
+            fillRectPx(col, row, 17, 10 + bobY, 2, 4, pal.shirt);
+            fillRectPx(col, row, 5, 9 + bobY, 2, 2, pal.skin);
+            fillRectPx(col, row, 17, 9 + bobY, 2, 2, pal.skin);
+          } else if (dir === DIR_LEFT) {
+            // Holding bomb out to the left
+            drawHeldMiniBomb(col, row, 1, 9 + bobY);
+            fillRectPx(col, row, 6, 11 + bobY, 4, 2, pal.shirt);
+            fillRectPx(col, row, 4, 12 + bobY, 3, 2, pal.skin);
+          } else if (dir === DIR_RIGHT) {
+            // Holding bomb out to the right
+            drawHeldMiniBomb(col, row, 15, 9 + bobY);
+            fillRectPx(col, row, 14, 11 + bobY, 4, 2, pal.shirt);
+            fillRectPx(col, row, 17, 12 + bobY, 3, 2, pal.skin);
+          }
+        } else {
+          // UNARMED SPRITE SET (Bomb placed on ground): Empty hands with brisk swinging arms!
+          const armSwing = step;
+          if (dir === DIR_DOWN || dir === DIR_UP) {
+            // Left arm swinging
+            fillRectPx(col, row, 5, 11 + bobY + armSwing, 2, 3, pal.shirt);
+            fillRectPx(col, row, 5, 14 + bobY + armSwing, 2, 2, pal.skin);
+            // Right arm swinging opposite
+            fillRectPx(col, row, 17, 11 + bobY - armSwing, 2, 3, pal.shirt);
+            fillRectPx(col, row, 17, 14 + bobY - armSwing, 2, 2, pal.skin);
+          } else {
+            // Side view swinging arm
+            const sx = step * 2;
+            fillRectPx(col, row, 10 + sx, 11 + bobY, 3, 3, pal.shirt);
+            fillRectPx(col, row, 10 + sx, 14 + bobY, 3, 2, pal.skin);
+          }
+        }
+      }
+
+      // Helper to draw the cute mini bomb held in a character's hands (8x8 logical pixels)
+      function drawHeldMiniBomb(col, row, bx, by) {
+        fillRectPx(col, row, bx + 1, by + 1, 6, 6, '#0f172a');
+        fillRectPx(col, row, bx + 2, by, 4, 8, '#0f172a');
+        fillRectPx(col, row, bx, by + 2, 8, 4, '#0f172a');
+        fillRectPx(col, row, bx + 2, by + 2, 4, 4, '#334155');
+        // Glossy white highlight on held bomb
+        plotPx(col, row, bx + 2, by + 2, '#ffffff');
+        plotPx(col, row, bx + 3, by + 2, '#93c5fd');
+        // Golden fuse spark on top
+        plotPx(col, row, bx + 4, by - 1, '#f59e0b');
+        plotPx(col, row, bx + 5, by - 2, '#fde047');
+      }
+
+      // --------------------------------------------------------------------------
+      // 5. PRE-ALLOCATED OBJECT POOLS (ZERO RUNTIME GARBAGE COLLECTION)
+      // --------------------------------------------------------------------------
+      const MAX_BOMBS = 32;
+      const MAX_EXPLOSIONS = 64;
+      const MAX_DESTRUCT = 64;
+      const MAX_SHOCKWAVES = 32;
+      const MAX_PARTICLES = 600;
+
+      const PARTICLE_COLORS = [
+        '#ffffff', // 0: White-hot core spark
+        '#fde047', // 1: Solar yellow flame
+        '#f97316', // 2: Vibrant tangerine blast
+        '#ec4899', // 3: Magenta plasma rim
+        '#22c55e', // 4: Tropical palm frond green
+        '#4ade80', // 5: Sunlit lime leaf
+        '#b45309', // 6: Coconut trunk bark
+        '#94a3b8', // 7: Coastal rock chip light
+        '#475569', // 8: Coastal boulder slate
+        '#ecc06c'  // 9: Warm beach sand kick
+      ];
+
+      const bombPool = new Array(MAX_BOMBS);
+      for (let i = 0; i < MAX_BOMBS; i++) {
+        bombPool[i] = {
+          active: false,
+          gx: 0,
+          gy: 0,
+          ownerId: 0,
+          timer: 0,
+          maxTimer: 155,
+          range: 2
+        };
+      }
+
+      const explosionPool = new Array(MAX_EXPLOSIONS);
+      for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+        explosionPool[i] = {
+          active: false,
+          gx: 0,
+          gy: 0,
+          timer: 0,
+          maxTimer: 26,
+          upLen: 0,
+          downLen: 0,
+          leftLen: 0,
+          rightLen: 0
+        };
+      }
+
+      const destructPool = new Array(MAX_DESTRUCT);
+      for (let i = 0; i < MAX_DESTRUCT; i++) {
+        destructPool[i] = {
+          active: false,
+          gx: 0,
+          gy: 0,
+          tileType: TILE_PALM,
+          timer: 0,
+          maxTimer: 20,
+          dropPowerup: POW_NONE
+        };
+      }
+
+      const shockwavePool = new Array(MAX_SHOCKWAVES);
+      for (let i = 0; i < MAX_SHOCKWAVES; i++) {
+        shockwavePool[i] = {
+          active: false,
+          x: 0,
+          y: 0,
+          radius: 4,
+          maxRadius: 96,
+          life: 0,
+          maxLife: 18
+        };
+      }
+
+      const particlePool = new Array(MAX_PARTICLES);
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        particlePool[i] = {
+          active: false,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          size: 3,
+          colorIdx: 0,
+          life: 0,
+          maxLife: 20,
+          drag: 0.92,
+          gravity: 0
+        };
+      }
+
+      let particleCursor = 0;
+      let activeParticleCount = 0;
+
+      function spawnParticle(x, y, vx, vy, size, colorIdx, life, drag, gravity) {
+        const pt = particlePool[particleCursor];
+        particleCursor = (particleCursor + 1) % MAX_PARTICLES;
+        pt.active = true;
+        pt.x = x;
+        pt.y = y;
+        pt.vx = vx;
+        pt.vy = vy;
+        pt.size = size;
+        pt.colorIdx = colorIdx;
+        pt.life = life;
+        pt.maxLife = life;
+        pt.drag = drag;
+        pt.gravity = gravity;
+      }
+
+      function spawnShockwave(x, y, maxRadius) {
+        for (let i = 0; i < MAX_SHOCKWAVES; i++) {
+          const sw = shockwavePool[i];
+          if (!sw.active) {
+            sw.active = true;
+            sw.x = x;
+            sw.y = y;
+            sw.radius = 6;
+            sw.maxRadius = maxRadius;
+            sw.life = 18;
+            sw.maxLife = 18;
+            break;
+          }
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 6. CHARACTERS & MULTIPLAYER NETWORKING STATE
+      // --------------------------------------------------------------------------
+      const BASE_NAMES = ['Alex', 'Maya', 'Liam', 'Zoe'];
+      const players = [
+        { id: 0, baseName: 'Alex', name: 'Alex (You)', isAI: false, isRemote: false, badgeColor: '#06b6d4' },
+        { id: 1, baseName: 'Maya', name: 'Maya (AI)',  isAI: true,  isRemote: false, badgeColor: '#f43f5e' },
+        { id: 2, baseName: 'Liam', name: 'Liam (AI)',  isAI: true,  isRemote: false, badgeColor: '#f59e0b' },
+        { id: 3, baseName: 'Zoe',  name: 'Zoe (AI)',   isAI: true,  isRemote: false, badgeColor: '#a855f7' }
+      ];
+
+      // Deterministic Seeded PRNG (Mulberry32) so Host & Clients generate identical beach arenas & loot drops
+      let currentMatchSeed = 1337420;
+      let prngState = currentMatchSeed;
+
+      function seedArenaRng(seedVal) {
+        currentMatchSeed = seedVal >>> 0;
+        prngState = currentMatchSeed;
+      }
+
+      function arenaRng() {
+        let t = (prngState += 0x6D2B79F5);
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+
+      // Online Multiplayer State
+      const netState = {
+        mode: 'SOLO',          // 'SOLO', 'HOST', 'CLIENT'
+        roomCode: '',
+        localSlot: 0,          // Which character index (0..3) this browser controls
+        fillWithAi: true,
+        bc: null,              // BroadcastChannel for zero-WebSocket tab/window P2P
+        rtcPeers: [null, null, null, null], // Native RTCPeerConnections (no WebSockets)
+        rtcChannels: [null, null, null, null], // Native RTCDataChannels
+        peer: null,            // PeerJS (WebRTC) endpoint for cross-device play
+        pollTimer: null,       // HTTPS Fetch signaling poll interval
+        clientId: 'c_' + Math.random().toString(36).slice(2, 9),
+        hostConn: null,        // Virtual connection adapter for Client -> Host
+        clientConns: [null, null, null, null], // Virtual connection adapters for Host -> Clients
+        slotOccupied: [true, false, false, false], // True if a human/online player is in slot 0..3
+        simulatedSlots: [false, false, false, false] // Optional simulated online friend slots for single-window testing
+      };
+
+      for (let i = 0; i < 4; i++) {
+        const p = players[i];
+        p.alive = true;
+        p.x = 0;
+        p.y = 0;
+        p.prevX = 0;
+        p.prevY = 0;
+        p.dir = DIR_DOWN;
+        p.moving = false;
+        p.animTick = 0;
+        p.animFrame = 0;
+        p.speed = 0.082;          // Tiles per 60Hz tick (~4.92 tiles/sec crisp movement)
+        p.maxBombs = 1;
+        p.activeBombs = 0;        // When activeBombs === 0 -> HOLDING BOMB sprite; when > 0 -> UNARMED sprite!
+        p.flameRange = 2;
+        p.passableBombGx = -1;    // Allows walking off the bomb tile just placed
+        p.passableBombGy = -1;
+        // Remote client input buffer (used by Host to drive connected friends)
+        p.netInputX = 0;
+        p.netInputY = 0;
+        p.netDir = DIR_DOWN;
+        p.netMoving = false;
+        // AI state & telemetry fields (pre-allocated, zero GC)
+        p.aiState = 'HUNT';       // 'EVADE', 'BREACH', 'HUNT', 'LOOT'
+        p.aiTargetGx = 0;
+        p.aiTargetGy = 0;
+        p.aiGoalCell = -1;        // Final goal tile of A* or Escape BFS
+        p.aiBreachCell = -1;      // Destructible Palm/Rock tile targeted for breaching
+        p.aiHasStep = false;
+        p.aiCooldown = 0;
+        p.aiPath = new Uint16Array(64); // Pre-allocated path buffer for A* / BFS route & AI Vision overlay
+        p.aiPathLen = 0;
+      }
+
+      function refreshSlotRoles() {
+        for (let i = 0; i < 4; i++) {
+          const p = players[i];
+          if (netState.mode === 'SOLO') {
+            p.isAI = (i !== 0);
+            p.isRemote = false;
+            p.name = i === 0 ? `${p.baseName} (You)` : `${p.baseName} (AI)`;
+          } else {
+            const isHuman = netState.slotOccupied[i];
+            const isMe = (i === netState.localSlot);
+            p.isAI = !isHuman && netState.fillWithAi;
+            p.isRemote = (netState.mode === 'CLIENT' && !isMe) || (netState.mode === 'HOST' && isHuman && !isMe);
+            if (isMe) {
+              p.name = `${p.baseName} (You • P${i + 1})`;
+            } else if (isHuman) {
+              p.name = `${p.baseName} (Online P${i + 1})`;
+            } else if (p.isAI) {
+              p.name = `${p.baseName} (AI Bot)`;
+            } else {
+              p.name = `${p.baseName} (Open Slot)`;
+            }
+          }
+        }
+        const localP = players[netState.localSlot];
+        const hudTitle = document.getElementById('localHudTitle');
+        if (hudTitle && localP) {
+          hudTitle.textContent = `P${netState.localSlot + 1} ${localP.baseName} // Live Rig State`;
+        }
+        renderMpSlotsUI();
+      }
+
+      // --------------------------------------------------------------------------
+      // 7.5: ZERO-WEBSOCKET P2P & HTTPS ROOM LOBBY ENGINE (CANVAS & GOOGLE SITES SAFE)
+      // --------------------------------------------------------------------------
+      const ROOM_PREFIX = 'coastline-blasters-v2-';
+      const KV_SIGNAL_BASE = 'https://kvdb.io/A2w9K8pL4mX7vQ1nZ5rT3c/' + ROOM_PREFIX;
+      const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+      function generateRoomCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 5; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+      }
+
+      function setMpBanner(text, badgeText, isError) {
+        const statusEl = document.getElementById('mpStatusText');
+        const badgeEl = document.getElementById('mpPingBadge');
+        const topLbl = document.getElementById('lblMultiplayer');
+        const topDot = document.getElementById('mpStatusDot');
+        if (statusEl) {
+          statusEl.textContent = text;
+          statusEl.className = isError
+            ? 'font-mono-tech font-bold text-rose-400'
+            : 'font-mono-tech font-bold text-cyan-300';
+        }
+        if (badgeEl && badgeText) badgeEl.textContent = badgeText;
+        if (topLbl) {
+          if (netState.mode === 'SOLO') {
+            topLbl.textContent = 'Online Lobby [M]';
+            if (topDot) topDot.className = 'w-2 h-2 rounded-full bg-slate-950';
+          } else {
+            topLbl.textContent = `Room: ${netState.roomCode} (P${netState.localSlot + 1})`;
+            if (topDot) topDot.className = 'w-2 h-2 rounded-full bg-emerald-300 animate-ping';
+          }
+        }
+      }
+
+      // Safe HTTPS Fetch Signaling Helper (Never uses WebSockets; silently degrades if offline)
+      async function httpSignalPost(key, payload) {
+        try {
+          await fetch(KV_SIGNAL_BASE + key, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch (e) {
+          // Ignore network/CORS restrictions in strict offline sandboxes
+        }
+      }
+
+      async function httpSignalGet(key) {
+        try {
+          const res = await fetch(KV_SIGNAL_BASE + key + '?_t=' + Date.now(), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function openBroadcastBus(code) {
+        if (netState.bc) {
+          try { netState.bc.close(); } catch (e) {}
+          netState.bc = null;
+        }
+        if (typeof BroadcastChannel !== 'undefined') {
+          try {
+            netState.bc = new BroadcastChannel(ROOM_PREFIX + code);
+          } catch (e) {
+            netState.bc = null;
+          }
+        }
+        return netState.bc;
+      }
+
+      function broadcastToClients(packet) {
+        for (let s = 1; s < 4; s++) {
+          const conn = netState.clientConns[s];
+          if (conn && conn.open) {
+            conn.send(packet);
+          }
+        }
+      }
+
+      function disconnectMultiplayer() {
+        if (netState.pollTimer) {
+          clearInterval(netState.pollTimer);
+          netState.pollTimer = null;
+        }
+        // Tell everyone we're leaving (Host -> its Clients, Client -> Host) before tearing down the links
+        if (netState.mode === 'HOST') {
+          broadcastToClients({ t: 'CLOSE' });
+        } else if (netState.mode === 'CLIENT' && netState.hostConn && netState.hostConn.open) {
+          try { netState.hostConn.send({ t: 'CLOSE', from: netState.clientId }); } catch (e) {}
+        }
+        if (netState.bc) {
+          try { netState.bc.close(); } catch (e) {}
+          netState.bc = null;
+        }
+        if (netState.peer) {
+          const oldPeer = netState.peer;
+          netState.peer = null;
+          // Small delay so the final CLOSE packet can flush over the WebRTC channel
+          setTimeout(() => { try { oldPeer.destroy(); } catch (e) {} }, 300);
+        }
+        for (let i = 0; i < 4; i++) {
+          if (netState.rtcChannels[i]) {
+            try { netState.rtcChannels[i].close(); } catch (e) {}
+            netState.rtcChannels[i] = null;
+          }
+          if (netState.rtcPeers[i]) {
+            try { netState.rtcPeers[i].close(); } catch (e) {}
+            netState.rtcPeers[i] = null;
+          }
+        }
+        netState.hostConn = null;
+        netState.clientConns = [null, null, null, null];
+        netState.mode = 'SOLO';
+        netState.roomCode = '';
+        netState.localSlot = 0;
+        netState.slotOccupied = [true, false, false, false];
+        netState.simulatedSlots = [false, false, false, false];
+
+        document.getElementById('hostRoomCodeBox').classList.add('hidden');
+        document.getElementById('btnLeaveRoom').classList.add('hidden');
+        document.getElementById('btnStartMpMatch').classList.add('hidden');
+        document.getElementById('btnSimulateJoin').classList.add('hidden');
+
+        setMpBanner('SOLO ARENA (1 HUMAN + 3 AI BOTS)', '60Hz Deterministic', false);
+        resetMatch();
+      }
+
+      // Handles packets sent from a joined Client (Slot 1..3) to the Host
+      function handleHostIncomingFromSlot(assignedSlot, data) {
+        if (!data || typeof data !== 'object') return;
+        if (data.t === 'INPUT') {
+          const p = players[assignedSlot];
+          if (p && p.alive) {
+            p.prevX = p.x;
+            p.prevY = p.y;
+            p.x = data.x;
+            p.y = data.y;
+            p.dir = data.dir;
+            p.moving = data.moving;
+            const cgx = Math.floor(p.x);
+            const cgy = Math.floor(p.y);
+            if (inBounds(cgx, cgy)) {
+              const cell = idx(cgx, cgy);
+              const pow = powerupMap[cell];
+              if (pow !== POW_NONE) {
+                powerupMap[cell] = POW_NONE;
+                if (pow === POW_BOMB) p.maxBombs = Math.min(6, p.maxBombs + 1);
+                else if (pow === POW_FLAME) p.flameRange = Math.min(7, p.flameRange + 1);
+                else if (pow === POW_SPEED) p.speed = Math.min(0.125, p.speed + 0.011);
+                sfx.playPowerup();
+                updateRosterHUD();
+              }
+            }
+          }
+        } else if (data.t === 'BOMB') {
+          const p = players[assignedSlot];
+          if (p && p.alive) {
+            if (tryPlaceBomb(p)) {
+              broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: Math.floor(p.x), gy: Math.floor(p.y) });
+            }
+          }
+        } else if (data.t === 'REQ_RESTART') {
+          resetMatch();
+        }
+      }
+
+      // Assigns a slot (1..3) to a newly joining client and sends WELCOME
+      function acceptJoiningClient(clientId, sendFn) {
+        let assignedSlot = -1;
+        for (let s = 1; s < 4; s++) {
+          if (!netState.slotOccupied[s]) {
+            assignedSlot = s;
+            break;
+          }
+        }
+        if (assignedSlot === -1) {
+          sendFn({ t: 'FULL', to: clientId });
+          return -1;
+        }
+
+        netState.slotOccupied[assignedSlot] = true;
+        netState.simulatedSlots[assignedSlot] = false;
+        netState.clientConns[assignedSlot] = {
+          open: true,
+          clientId: clientId,
+          send: (pkt) => sendFn({ ...pkt, to: clientId, slot: assignedSlot })
+        };
+
+        setMpBanner(`PLAYER P${assignedSlot + 1} (${BASE_NAMES[assignedSlot]}) JOINED ROOM [${netState.roomCode}]!`, 'Zero-WS Linked', false);
+        sendFn({
+          t: 'WELCOME',
+          to: clientId,
+          slot: assignedSlot,
+          code: netState.roomCode,
+          seed: currentMatchSeed,
+          occupied: netState.slotOccupied,
+          fillAi: netState.fillWithAi
+        });
+        resetMatch();
+        return assignedSlot;
+      }
+
+      function hostOnlineRoom() {
+        disconnectMultiplayer();
+
+        const code = generateRoomCode();
+        netState.mode = 'HOST';
+        netState.roomCode = code;
+        netState.localSlot = 0;
+        netState.slotOccupied = [true, false, false, false];
+        netState.simulatedSlots = [false, false, false, false];
+        netState.fillWithAi = document.getElementById('chkFillAi').checked;
+
+        document.getElementById('hostRoomCodeDisplay').textContent = code;
+        document.getElementById('hostRoomCodeBox').classList.remove('hidden');
+        document.getElementById('btnLeaveRoom').classList.remove('hidden');
+        document.getElementById('btnStartMpMatch').classList.remove('hidden');
+        document.getElementById('btnSimulateJoin').classList.remove('hidden');
+
+        setMpBanner(`HOSTING ROOM [${code}] • SHARE CODE WITH FRIENDS`, 'Host Active (Zero-WS)', false);
+
+        // 1. Open BroadcastChannel for instant multi-tab / multi-window connections
+        const bc = openBroadcastBus(code);
+        const clientSlotMap = {};
+
+        const peerConns = {}; // clientId -> PeerJS DataConnection (cross-device clients)
+
+        const sendViaHostTransport = (pkt) => {
+          // Route each packet over exactly one link: WebRTC if that client has one, else same-browser BroadcastChannel
+          const dc = pkt.to ? peerConns[pkt.to] : null;
+          if (dc && dc.open) {
+            try { dc.send(pkt); } catch (e) {}
+          } else if (bc) {
+            try { bc.postMessage(pkt); } catch (e) {}
+          }
+          // Also push authoritative room snapshot for HTTPS Fetch clients
+          if (pkt.t === 'WELCOME' || pkt.t === 'START' || pkt.t === 'ROSTER' || pkt.t === 'BOMB_PLACED') {
+            httpSignalPost(code + '_host', {
+              ts: Date.now(),
+              seed: currentMatchSeed,
+              occupied: netState.slotOccupied,
+              fillAi: netState.fillWithAi,
+              lastEvent: pkt
+            });
+          }
+        };
+
+        const removeClient = (clientId) => {
+          const s2 = clientSlotMap[clientId];
+          if (s2 === undefined) return;
+          delete clientSlotMap[clientId];
+          delete peerConns[clientId];
+          netState.clientConns[s2] = null;
+          netState.slotOccupied[s2] = false;
+          refreshSlotRoles();
+          updateRosterHUD();
+          setMpBanner(`P${s2 + 1} LEFT ROOM [${code}]`, 'Host Active', false);
+          broadcastToClients({ t: 'ROSTER', occupied: netState.slotOccupied, fillAi: netState.fillWithAi });
+        };
+
+        const handleHostMessage = (msg, dc) => {
+          if (!msg || typeof msg !== 'object') return;
+          if (msg.t === 'JOIN_REQ' && msg.clientId) {
+            if (dc) { dc.clientId = msg.clientId; peerConns[msg.clientId] = dc; }
+            if (clientSlotMap[msg.clientId] !== undefined) return;
+            const slot = acceptJoiningClient(msg.clientId, sendViaHostTransport);
+            if (slot !== -1) {
+              clientSlotMap[msg.clientId] = slot;
+            }
+          } else if (msg.t === 'CLOSE' && msg.from && clientSlotMap[msg.from] !== undefined) {
+            removeClient(msg.from);
+          } else if (msg.clientId && clientSlotMap[msg.clientId] !== undefined) {
+            handleHostIncomingFromSlot(clientSlotMap[msg.clientId], msg);
+          }
+        };
+
+        if (bc) {
+          bc.onmessage = (ev) => handleHostMessage(ev.data, null);
+        }
+
+        // 1b. WebRTC (PeerJS) endpoint so friends on OTHER devices can join with just the room code
+        if (typeof Peer !== 'undefined') {
+          try {
+            const peer = new Peer(ROOM_PREFIX + code);
+            netState.peer = peer;
+            peer.on('connection', (dc) => {
+              dc.on('data', (msg) => handleHostMessage(msg, dc));
+              dc.on('close', () => { if (dc.clientId) removeClient(dc.clientId); });
+              dc.on('error', () => { if (dc.clientId) removeClient(dc.clientId); });
+            });
+            peer.on('error', (err) => {
+              if (netState.peer !== peer) return;
+              if (err && err.type === 'unavailable-id') {
+                setMpBanner(`ROOM CODE [${code}] IS ALREADY IN USE - LEAVE AND CREATE A NEW ROOM`, 'Code Taken', true);
+              } else {
+                setMpBanner(`HOSTING [${code}] (SAME-BROWSER ONLY: ONLINE LINK ERROR)`, 'Link Error', true);
+              }
+            });
+          } catch (e) {}
+        }
+
+        // 2. Publish initial room state over HTTPS Fetch & poll for cross-device HTTP/WebRTC joins
+        httpSignalPost(code + '_host', {
+          ts: Date.now(),
+          seed: currentMatchSeed,
+          occupied: netState.slotOccupied,
+          fillAi: netState.fillWithAi,
+          lastEvent: { t: 'START', seed: currentMatchSeed, occupied: netState.slotOccupied, fillAi: netState.fillWithAi }
+        });
+
+        netState.pollTimer = setInterval(async () => {
+          if (netState.mode !== 'HOST') return;
+          const joinReq = await httpSignalGet(code + '_join');
+          if (joinReq && joinReq.clientId && clientSlotMap[joinReq.clientId] === undefined && (Date.now() - joinReq.ts < 15000)) {
+            const slot = acceptJoiningClient(joinReq.clientId, sendViaHostTransport);
+            if (slot !== -1) {
+              clientSlotMap[joinReq.clientId] = slot;
+            }
+          }
+        }, 1200);
+
+        resetMatch();
+      }
+
+      // Allows testing a friend joining Slot P2/P3/P4 directly inside a single Canvas preview window
+      function simulateFriendJoiningRoom() {
+        if (netState.mode !== 'HOST') return;
+        let assignedSlot = -1;
+        for (let s = 1; s < 4; s++) {
+          if (!netState.slotOccupied[s]) {
+            assignedSlot = s;
+            break;
+          }
+        }
+        if (assignedSlot === -1) {
+          setMpBanner(`ALL 4 CONTESTANT SLOTS ARE ALREADY FILLED!`, '4/4 Full', false);
+          return;
+        }
+        netState.slotOccupied[assignedSlot] = true;
+        netState.simulatedSlots[assignedSlot] = true;
+        setMpBanner(`ONLINE PLAYER P${assignedSlot + 1} (${BASE_NAMES[assignedSlot]}) JOINED ROOM [${netState.roomCode}]!`, 'P2P Linked', false);
+        resetMatch();
+      }
+
+      function joinOnlineRoom(rawCode) {
+        const code = (rawCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (code.length < 4) {
+          setMpBanner('PLEASE ENTER A VALID 5-LETTER ROOM CODE', 'Invalid Code', true);
+          return;
+        }
+
+        disconnectMultiplayer();
+        netState.mode = 'CLIENT';
+        netState.roomCode = code;
+        setMpBanner(`CONNECTING TO ROOM [${code}] (ZERO-WEBSOCKET P2P)...`, 'Handshaking...', false);
+
+        const bc = openBroadcastBus(code);
+        let connected = false;
+
+        const handleClientIncoming = (data) => {
+          if (!data || typeof data !== 'object') return;
+          if (data.to && data.to !== netState.clientId) return;
+
+          if (data.t === 'FULL') {
+            setMpBanner(`ROOM [${code}] IS FULL (4/4 PLAYERS)`, 'Full', true);
+            disconnectMultiplayer();
+          } else if (data.t === 'WELCOME') {
+            connected = true;
+            netState.localSlot = data.slot;
+            netState.slotOccupied = data.occupied;
+            netState.fillWithAi = data.fillAi;
+            document.getElementById('btnLeaveRoom').classList.remove('hidden');
+            setMpBanner(`JOINED ROOM [${code}] AS P${data.slot + 1} (${BASE_NAMES[data.slot]})!`, 'Online 60Hz', false);
+            resetMatch(data.seed, true);
+            updatePlayerHUD();
+          } else if (data.t === 'START') {
+            netState.slotOccupied = data.occupied;
+            netState.fillWithAi = data.fillAi;
+            resetMatch(data.seed, true);
+          } else if (data.t === 'ROSTER') {
+            netState.slotOccupied = data.occupied;
+            netState.fillWithAi = data.fillAi;
+            refreshSlotRoles();
+            updateRosterHUD();
+          } else if (data.t === 'BOMB_PLACED') {
+            const p = players[data.slot];
+            if (p && p.alive && data.slot !== netState.localSlot) {
+              p.x = data.gx + 0.5;
+              p.y = data.gy + 0.5;
+              tryPlaceBomb(p);
+            }
+          } else if (data.t === 'STATE') {
+            for (let i = 0; i < 4; i++) {
+              const sp = data.p[i];
+              const lp = players[i];
+              const wasAlive = lp.alive;
+              lp.alive = sp.a;
+              lp.maxBombs = sp.mb;
+              lp.activeBombs = sp.ab;
+              lp.flameRange = sp.fr;
+              lp.speed = sp.sp;
+              lp.aiState = sp.ais || 'HUNT';
+              if (i !== netState.localSlot) {
+                lp.prevX = lp.x;
+                lp.prevY = lp.y;
+                lp.x = sp.x;
+                lp.y = sp.y;
+                lp.dir = sp.d;
+                lp.moving = sp.m;
+              }
+              if (wasAlive && !lp.alive) {
+                sfx.playEliminated();
+                updateRosterHUD();
+                if (i === netState.localSlot) updatePlayerHUD();
+              }
+            }
+          } else if (data.t === 'CLOSE' && !data.from) {
+            setMpBanner(`HOST CLOSED ROOM [${code}]`, 'Disconnected', true);
+            disconnectMultiplayer();
+          }
+        };
+
+        let hostDc = null; // WebRTC link to the Host (cross-device)
+
+        netState.hostConn = {
+          open: true,
+          send: (pkt) => {
+            const payload = { ...pkt, clientId: netState.clientId };
+            if (hostDc && hostDc.open) {
+              try { hostDc.send(payload); } catch (e) {}
+            } else if (bc) {
+              try { bc.postMessage(payload); } catch (e) {}
+            }
+          }
+        };
+
+        if (typeof Peer !== 'undefined') {
+          try {
+            const peer = new Peer();
+            netState.peer = peer;
+            peer.on('open', () => {
+              if (netState.peer !== peer) return;
+              const dc = peer.connect(ROOM_PREFIX + code, { reliable: true });
+              dc.on('open', () => {
+                hostDc = dc;
+                dc.send({ t: 'JOIN_REQ', clientId: netState.clientId, ts: Date.now() });
+              });
+              dc.on('data', (msg) => handleClientIncoming(msg));
+              dc.on('close', () => {
+                if (netState.mode === 'CLIENT' && netState.peer === peer) {
+                  setMpBanner(`LOST CONNECTION TO HOST [${code}]`, 'Disconnected', true);
+                  disconnectMultiplayer();
+                }
+              });
+            });
+            peer.on('error', (err) => {
+              if (netState.peer !== peer || connected) return;
+              if (err && err.type === 'peer-unavailable') {
+                setMpBanner(`WAITING FOR HOST [${code}]... (CHECK THE ROOM CODE)`, 'Searching...', false);
+              }
+            });
+          } catch (e) {}
+        }
+
+        if (bc) {
+          bc.onmessage = (ev) => handleClientIncoming(ev.data);
+          try {
+            bc.postMessage({ t: 'JOIN_REQ', clientId: netState.clientId, ts: Date.now() });
+          } catch (e) {}
+        }
+
+        httpSignalPost(code + '_join', { clientId: netState.clientId, ts: Date.now() });
+
+        let attempts = 0;
+        netState.pollTimer = setInterval(async () => {
+          if (netState.mode !== 'CLIENT') return;
+          if (!connected) {
+            attempts++;
+            if (bc) {
+              try { bc.postMessage({ t: 'JOIN_REQ', clientId: netState.clientId, ts: Date.now() }); } catch (e) {}
+            }
+            const hostSnap = await httpSignalGet(code + '_host');
+            if (hostSnap && hostSnap.lastEvent) {
+              handleClientIncoming(hostSnap.lastEvent);
+            } else if (attempts >= 5) {
+              setMpBanner(`WAITING FOR HOST [${code}]... (OPEN TAB OR CLICK CREATE ROOM)`, 'Searching...', false);
+            }
+          } else {
+            const hostSnap = await httpSignalGet(code + '_host');
+            if (hostSnap && hostSnap.lastEvent && hostSnap.lastEvent.t === 'START') {
+              if (hostSnap.seed !== currentMatchSeed) {
+                handleClientIncoming(hostSnap.lastEvent);
+              }
+            }
+          }
+        }, 1000);
+      }
+
+      const SPAWN_CORNERS = [
+        { gx: PLAY_MIN_X, gy: PLAY_MIN_Y },
+        { gx: PLAY_MAX_X, gy: PLAY_MAX_Y },
+        { gx: PLAY_MAX_X, gy: PLAY_MIN_Y },
+        { gx: PLAY_MIN_X, gy: PLAY_MAX_Y }
+      ];
+
+      let gameTick = 0;
+      let matchState = 'PLAYING';
+      let screenShakeTicks = 0;
+      let aiVisionEnabled = true;
+
+        function isSpawnSafeZone(gx, gy) {
+          for (let i = 0; i < 4; i++) {
+            const sc = SPAWN_CORNERS[i];
+            if (Math.abs(gx - sc.gx) + Math.abs(gy - sc.gy) <= 2) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        function renderMpSlotsUI() {
+          const container = document.getElementById('mpSlotsContainer');
+          if (!container) return;
+          let html = '';
+          for (let i = 0; i < 4; i++) {
+            const p = players[i];
+            const isMe = (i === netState.localSlot);
+            const occupied = netState.slotOccupied[i];
+            const isSim = netState.simulatedSlots[i];
+            const slotTitle = isMe ? `${p.baseName} (You • P${i + 1})` : (occupied ? `${p.baseName} (Online P${i + 1}${isSim ? ' [Simulated]' : ''})` : (p.isAI ? `${p.baseName} (AI Bot)` : `${p.baseName} (Open Slot)`));
+            const badgeClass = occupied ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40' : (p.isAI ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' : 'bg-slate-800 text-slate-400 border-slate-700');
+
+            html += `
+              <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-3 h-3 rounded-full" style="background:${p.badgeColor}"></span>
+                  <div>
+                    <div class="text-xs font-bold text-white">${slotTitle}</div>
+                    <div class="text-[10px] font-mono-tech text-slate-400">Spawn Corner #${i + 1} &bull; 60Hz Rig</div>
+                  </div>
+                </div>
+                <span class="px-2 py-0.5 text-[10px] font-mono-tech font-bold rounded border ${badgeClass}">
+                  ${occupied ? 'CONNECTED' : (p.isAI ? 'AI BOT' : 'OPEN')}
+                </span>
+              </div>
+            `;
+          }
+          container.innerHTML = html;
+        }
+
+        function canPlayerEnterTile(p, gx, gy) {
+          if (!inBounds(gx, gy)) return false;
+          const cell = idx(gx, gy);
+          const t = tileMap[cell];
+          if (t === TILE_WATER_DEEP || t === TILE_WATER_SHALLOW || t === TILE_PILLAR || t === TILE_PALM || t === TILE_ROCK) {
+            return false;
+          }
+          const bombRef = bombIndexMap[cell];
+          if (bombRef !== 0) {
+            const bIdx = bombRef - 1;
+            const b = bombPool[bIdx];
+            if (b && b.active) {
+              if (gx === p.passableBombGx && gy === p.passableBombGy) {
+                return true;
+              }
+              return false;
+            }
+          }
+          return true;
+        }
+
+      // Host/Solo generate a fresh seed; Clients receive the Host's seed so every arena & loot drop is identical.
+      function resetMatch(seedVal, fromNetwork) {
+        // A Client can't restart on its own: ask the Host, who rebroadcasts START with a new seed
+        if (netState.mode === 'CLIENT' && !fromNetwork) {
+          if (netState.hostConn && netState.hostConn.open) {
+            netState.hostConn.send({ t: 'REQ_RESTART' });
+          }
+          return;
+        }
+
+        seedArenaRng(typeof seedVal === 'number' ? seedVal : ((Math.random() * 4294967296) >>> 0));
+
+        gameTick = 0;
+        matchState = 'PLAYING';
+        screenShakeTicks = 0;
+        document.getElementById('matchOverlay').classList.add('hidden');
+        document.getElementById('btnOverlayAction').textContent = 'Play Again [R]';
+
+        // Clear all contiguous TypedArrays & Object Pools
+        tileMap.fill(TILE_SAND);
+        powerupMap.fill(POW_NONE);
+        dangerMap.fill(0);
+        dangerTicksMap.fill(0);
+        bombIndexMap.fill(0);
+
+        for (let i = 0; i < MAX_BOMBS; i++) bombPool[i].active = false;
+        for (let i = 0; i < MAX_EXPLOSIONS; i++) explosionPool[i].active = false;
+        for (let i = 0; i < MAX_DESTRUCT; i++) destructPool[i].active = false;
+        for (let i = 0; i < MAX_SHOCKWAVES; i++) shockwavePool[i].active = false;
+        for (let i = 0; i < MAX_PARTICLES; i++) particlePool[i].active = false;
+
+        // Populate 23x21 Grid
+        for (let gy = 0; gy < GRID_H; gy++) {
+          for (let gx = 0; gx < GRID_W; gx++) {
+            const cell = idx(gx, gy);
+            sandVariantMap[cell] = (gx * 19 + gy * 31) % 4;
+
+            const outsidePlayable = (
+              gx < PLAY_MIN_X || gx > PLAY_MAX_X ||
+              gy < PLAY_MIN_Y || gy > PLAY_MAX_Y
+            );
+
+            if (outsidePlayable) {
+              const nearBeach = (
+                gx >= PLAY_MIN_X - 1 && gx <= PLAY_MAX_X + 1 &&
+                gy >= PLAY_MIN_Y - 1 && gy <= PLAY_MAX_Y + 1
+              );
+              tileMap[cell] = nearBeach ? TILE_WATER_SHALLOW : TILE_WATER_DEEP;
+              continue;
+            }
+
+            const relX = gx - PLAY_MIN_X;
+            const relY = gy - PLAY_MIN_Y;
+            if (relX % 2 === 1 && relY % 2 === 1) {
+              tileMap[cell] = TILE_PILLAR;
+              continue;
+            }
+
+            if (!isSpawnSafeZone(gx, gy)) {
+              const roll = arenaRng();
+              if (roll < 0.36) {
+                tileMap[cell] = TILE_PALM;
+              } else if (roll < 0.68) {
+                tileMap[cell] = TILE_ROCK;
+              }
+            }
+          }
+        }
+
+        // Reset Players at their 4 Beach Corners
+        for (let i = 0; i < 4; i++) {
+          const p = players[i];
+          const sc = SPAWN_CORNERS[i];
+          p.alive = true;
+          p.x = sc.gx + 0.5;
+          p.y = sc.gy + 0.5;
+          p.prevX = p.x;
+          p.prevY = p.y;
+          p.dir = DIR_DOWN;
+          p.moving = false;
+          p.animTick = 0;
+          p.animFrame = 0;
+          p.speed = 0.082;
+          p.maxBombs = 1;
+          p.activeBombs = 0;
+          p.flameRange = 2;
+          p.passableBombGx = -1;
+          p.passableBombGy = -1;
+          p.aiState = 'HUNT';
+          p.aiGoalCell = -1;
+          p.aiBreachCell = -1;
+          p.aiPathLen = 0;
+          p.aiHasStep = false;
+          p.aiCooldown = 10 + i * 6;
+          p.netInputX = 0;
+          p.netInputY = 0;
+          p.netDir = DIR_DOWN;
+          p.netMoving = false;
+        }
+
+        refreshSlotRoles();
+        updateRosterHUD();
+        updatePlayerHUD();
+
+        // Host tells every connected Client to rebuild the identical arena from the new seed
+        if (netState.mode === 'HOST') {
+          broadcastToClients({ t: 'START', seed: currentMatchSeed, occupied: netState.slotOccupied, fillAi: netState.fillWithAi });
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 8. INPUT HANDLING (KEYBOARD + MOBILE TOUCH D-PAD)
+      // --------------------------------------------------------------------------
+      const keysDown = {
+        up: false,
+        down: false,
+        left: false,
+        right: false
+      };
+      let bombRequested = false;
+
+      window.addEventListener('keydown', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') { keysDown.up = true; e.preventDefault(); }
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') { keysDown.down = true; e.preventDefault(); }
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') { keysDown.left = true; e.preventDefault(); }
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') { keysDown.right = true; e.preventDefault(); }
+        if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyZ') {
+          bombRequested = true;
+          e.preventDefault();
+        }
+        if (e.code === 'KeyR') {
+          resetMatch();
+        }
+        if (e.code === 'KeyP') {
+          togglePause();
+        }
+        if (e.code === 'KeyV') {
+          toggleAiVision();
+        }
+        if (e.code === 'KeyI') {
+          toggleAtlasModal();
+        }
+        if (e.code === 'Escape') {
+          document.getElementById('atlasModal').classList.add('hidden');
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') keysDown.up = false;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') keysDown.down = false;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') keysDown.left = false;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') keysDown.right = false;
+      });
+
+      // Touch D-Pad Bindings
+      const dpadButtons = document.querySelectorAll('[data-dir]');
+      dpadButtons.forEach((btn) => {
+        const dir = btn.getAttribute('data-dir');
+        const setDirState = (active) => {
+          btn.classList.toggle('active', active);
+          if (dir === 'UP') keysDown.up = active;
+          if (dir === 'DOWN') keysDown.down = active;
+          if (dir === 'LEFT') keysDown.left = active;
+          if (dir === 'RIGHT') keysDown.right = active;
+        };
+        btn.addEventListener('pointerdown', (e) => { e.preventDefault(); setDirState(true); });
+        btn.addEventListener('pointerup', (e) => { e.preventDefault(); setDirState(false); });
+        btn.addEventListener('pointerleave', () => setDirState(false));
+        btn.addEventListener('pointercancel', () => setDirState(false));
+      });
+
+      const btnTouchBomb = document.getElementById('btnTouchBomb');
+      btnTouchBomb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        bombRequested = true;
+      });
+
+
+      function moveCharacterWithCornerSlide(p, dx, dy) {
+        const radius = 0.34;
+        const step = p.speed;
+        let nextX = p.x + dx * step;
+        let nextY = p.y + dy * step;
+
+        if (dx !== 0) {
+          const leadX = nextX + dx * radius;
+          const checkGx = Math.floor(leadX);
+          const topGy = Math.floor(p.y - radius + 0.02);
+          const botGy = Math.floor(p.y + radius - 0.02);
+
+          const topFree = canPlayerEnterTile(p, checkGx, topGy);
+          const botFree = canPlayerEnterTile(p, checkGx, botGy);
+
+          if (topFree && botFree) {
+            p.x = nextX;
+            // Subtle auto-centering in corridor
+            const centerY = Math.floor(p.y) + 0.5;
+            p.y += (centerY - p.y) * 0.22;
+          } else if (topFree && !botFree) {
+            // Corner slide upward into open lane
+            p.y -= step * 0.85;
+          } else if (!topFree && botFree) {
+            // Corner slide downward into open lane
+            p.y += step * 0.85;
+          } else {
+            // Clamp flush against obstacle edge
+            p.x = dx > 0 ? (checkGx - radius - 0.001) : (checkGx + 1 + radius + 0.001);
+          }
+        } else if (dy !== 0) {
+          const leadY = nextY + dy * radius;
+          const checkGy = Math.floor(leadY);
+          const leftGx = Math.floor(p.x - radius + 0.02);
+          const rightGx = Math.floor(p.x + radius - 0.02);
+
+          const leftFree = canPlayerEnterTile(p, leftGx, checkGy);
+          const rightFree = canPlayerEnterTile(p, rightGx, checkGy);
+
+          if (leftFree && rightFree) {
+            p.y = nextY;
+            // Subtle auto-centering in corridor
+            const centerX = Math.floor(p.x) + 0.5;
+            p.x += (centerX - p.x) * 0.22;
+          } else if (leftFree && !rightFree) {
+            // Corner slide left into open lane
+            p.x -= step * 0.85;
+          } else if (!leftFree && rightFree) {
+            // Corner slide right into open lane
+            p.x += step * 0.85;
+          } else {
+            // Clamp flush against obstacle edge
+            p.y = dy > 0 ? (checkGy - radius - 0.001) : (checkGy + 1 + radius + 0.001);
+          }
+        }
+
+        // Clear passable bomb grace state once the character has walked off that tile
+        const curGx = Math.floor(p.x);
+        const curGy = Math.floor(p.y);
+        if (curGx !== p.passableBombGx || curGy !== p.passableBombGy) {
+          p.passableBombGx = -1;
+          p.passableBombGy = -1;
+        }
+
+        // Emit subtle beach sand kick particles while running
+        if (gameTick % 5 === 0) {
+          spawnParticle(
+            p.x * TILE_PX,
+            (p.y + 0.32) * TILE_PX,
+            -dx * 0.8 + (Math.random() - 0.5) * 0.6,
+            -dy * 0.8 - Math.random() * 0.5,
+            3,
+            9, // Warm beach sand color
+            12,
+            0.9,
+            0.04
+          );
+        }
+
+        // Check for Powerup Pickup on current tile
+        if (inBounds(curGx, curGy)) {
+          const cell = idx(curGx, curGy);
+          const pow = powerupMap[cell];
+          if (pow !== POW_NONE) {
+            powerupMap[cell] = POW_NONE;
+            if (pow === POW_BOMB) {
+              p.maxBombs = Math.min(6, p.maxBombs + 1);
+            } else if (pow === POW_FLAME) {
+              p.flameRange = Math.min(7, p.flameRange + 1);
+            } else if (pow === POW_SPEED) {
+              p.speed = Math.min(0.125, p.speed + 0.011);
+            }
+            sfx.playPowerup();
+            for (let k = 0; k < 12; k++) {
+              const ang = (k / 12) * Math.PI * 2;
+              spawnParticle(
+                (curGx + 0.5) * TILE_PX,
+                (curGy + 0.5) * TILE_PX,
+                Math.cos(ang) * 2.2,
+                Math.sin(ang) * 2.2,
+                4,
+                0,
+                16,
+                0.92,
+                0
+              );
+            }
+            updateRosterHUD();
+            if (p.id === netState.localSlot) updatePlayerHUD();
+          }
+        }
+      }
+
+      function tryPlaceBomb(p) {
+        if (!p.alive || p.activeBombs >= p.maxBombs) return false;
+        const gx = Math.floor(p.x);
+        const gy = Math.floor(p.y);
+        if (!inBounds(gx, gy)) return false;
+        const cell = idx(gx, gy);
+        if (tileMap[cell] !== TILE_SAND || bombIndexMap[cell] !== 0) return false;
+
+        for (let i = 0; i < MAX_BOMBS; i++) {
+          const b = bombPool[i];
+          if (!b.active) {
+            b.active = true;
+            b.gx = gx;
+            b.gy = gy;
+            b.ownerId = p.id;
+            b.timer = 155; // ~2.58 seconds at 60Hz
+            b.maxTimer = 155;
+            b.range = p.flameRange;
+
+            bombIndexMap[cell] = i + 1;
+            p.activeBombs++;
+            p.passableBombGx = gx;
+            p.passableBombGy = gy;
+
+            sfx.playBombPlace();
+            updateRosterHUD();
+            if (p.id === netState.localSlot) updatePlayerHUD();
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function spawnDestructObstacle(gx, gy, tileType) {
+        let drop = POW_NONE;
+        const roll = arenaRng(); // seeded so Host & Clients drop identical powerups
+        if (roll < 0.14) drop = POW_BOMB;
+        else if (roll < 0.28) drop = POW_FLAME;
+        else if (roll < 0.39) drop = POW_SPEED;
+
+        for (let i = 0; i < MAX_DESTRUCT; i++) {
+          const d = destructPool[i];
+          if (!d.active) {
+            d.active = true;
+            d.gx = gx;
+            d.gy = gy;
+            d.tileType = tileType;
+            d.timer = 20;
+            d.maxTimer = 20;
+            d.dropPowerup = drop;
+            break;
+          }
+        }
+
+        // Burst of tropical leaves or coastal rock chips
+        const cx = (gx + 0.5) * TILE_PX;
+        const cy = (gy + 0.5) * TILE_PX;
+        for (let k = 0; k < 14; k++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 1.2 + Math.random() * 2.8;
+          const colIdx = tileType === TILE_PALM
+            ? (k % 3 === 0 ? 6 : (k % 2 === 0 ? 4 : 5))
+            : (k % 2 === 0 ? 7 : 8);
+          spawnParticle(
+            cx,
+            cy,
+            Math.cos(ang) * spd,
+            Math.sin(ang) * spd - 0.8,
+            4,
+            colIdx,
+            22,
+            0.93,
+            0.08
+          );
+        }
+      }
+
+      function detonateBomb(bombIdx) {
+        const b = bombPool[bombIdx];
+        if (!b.active) return;
+        b.active = false;
+
+        const centerCell = idx(b.gx, b.gy);
+        if (bombIndexMap[centerCell] === bombIdx + 1) {
+          bombIndexMap[centerCell] = 0;
+        }
+
+        const owner = players[b.ownerId];
+        if (owner && owner.activeBombs > 0) {
+          owner.activeBombs--;
+        }
+
+        sfx.playExplosion();
+        screenShakeTicks = 11;
+        spawnShockwave((b.gx + 0.5) * TILE_PX, (b.gy + 0.5) * TILE_PX, (b.range + 0.8) * TILE_PX);
+
+        // Compute directional blast ray lengths & trigger chain reactions / obstacle destruction
+        const rayLengths = [0, 0, 0, 0]; // DOWN, UP, LEFT, RIGHT
+        for (let d = 0; d < 4; d++) {
+          const dx = DIR_DX[d];
+          const dy = DIR_DY[d];
+          let len = 0;
+
+          for (let s = 1; s <= b.range; s++) {
+            const tx = b.gx + dx * s;
+            const ty = b.gy + dy * s;
+            if (!inBounds(tx, ty)) break;
+            const tCell = idx(tx, ty);
+            const tType = tileMap[tCell];
+
+            if (tType === TILE_WATER_DEEP || tType === TILE_WATER_SHALLOW || tType === TILE_PILLAR) {
+              break; // Indestructible barrier stops flame
+            }
+
+            if (tType === TILE_PALM || tType === TILE_ROCK) {
+              // Destroy breakable beach obstacle & stop ray
+              tileMap[tCell] = TILE_SAND;
+              spawnDestructObstacle(tx, ty, tType);
+              len = s;
+              break;
+            }
+
+            // Destroy exposed powerup if hit by blast
+            if (powerupMap[tCell] !== POW_NONE) {
+              powerupMap[tCell] = POW_NONE;
+            }
+
+            len = s;
+
+            // Chain-detonate any other bomb caught in this blast ray
+            const otherBombRef = bombIndexMap[tCell];
+            if (otherBombRef !== 0) {
+              const otherIdx = otherBombRef - 1;
+              if (bombPool[otherIdx].active) {
+                detonateBomb(otherIdx);
+              }
+            }
+          }
+          rayLengths[d] = len;
+        }
+
+        // Allocate Explosion Plasma Beam from Pool
+        for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+          const ex = explosionPool[i];
+          if (!ex.active) {
+            ex.active = true;
+            ex.gx = b.gx;
+            ex.gy = b.gy;
+            ex.timer = 26;
+            ex.maxTimer = 26;
+            ex.downLen = rayLengths[DIR_DOWN];
+            ex.upLen = rayLengths[DIR_UP];
+            ex.leftLen = rayLengths[DIR_LEFT];
+            ex.rightLen = rayLengths[DIR_RIGHT];
+            break;
+          }
+        }
+
+        // Emit vibrant plasma & ember particles from blast center
+        const cx = (b.gx + 0.5) * TILE_PX;
+        const cy = (b.gy + 0.5) * TILE_PX;
+        for (let k = 0; k < 26; k++) {
+          const ang = (k / 26) * Math.PI * 2 + Math.random() * 0.2;
+          const spd = 1.8 + Math.random() * 4.2;
+          spawnParticle(
+            cx,
+            cy,
+            Math.cos(ang) * spd,
+            Math.sin(ang) * spd,
+            k % 3 === 0 ? 5 : 4,
+            k % 4,
+            24,
+            0.91,
+            0.03
+          );
+        }
+
+        updateRosterHUD();
+        updatePlayerHUD();
+      }
+
+      // --------------------------------------------------------------------------
+      // 10. DANGER MAP & ZERO-ALLOCATION AI ENGINE (WEIGHTED A* + ESCAPE BFS)
+      // --------------------------------------------------------------------------
+      // Pre-allocated scratch buffer for chain-reaction bomb fuse propagation
+      const effBombTimers = new Uint16Array(MAX_BOMBS);
+
+      function rebuildDangerMap() {
+        dangerMap.fill(0);
+        dangerTicksMap.fill(0);
+
+        // 1. Mark active explosion plasma beams as immediate lethal danger (dangerMap = 2, dangerTicksMap = 1)
+        for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+          const ex = explosionPool[i];
+          if (!ex.active) continue;
+          const cCell = idx(ex.gx, ex.gy);
+          dangerMap[cCell] = 2;
+          dangerTicksMap[cCell] = 1;
+
+          for (let s = 1; s <= ex.upLen; s++) {
+            const cell = idx(ex.gx, ex.gy - s);
+            dangerMap[cell] = 2;
+            dangerTicksMap[cell] = 1;
+          }
+          for (let s = 1; s <= ex.downLen; s++) {
+            const cell = idx(ex.gx, ex.gy + s);
+            dangerMap[cell] = 2;
+            dangerTicksMap[cell] = 1;
+          }
+          for (let s = 1; s <= ex.leftLen; s++) {
+            const cell = idx(ex.gx - s, ex.gy);
+            dangerMap[cell] = 2;
+            dangerTicksMap[cell] = 1;
+          }
+          for (let s = 1; s <= ex.rightLen; s++) {
+            const cell = idx(ex.gx + s, ex.gy);
+            dangerMap[cell] = 2;
+            dangerTicksMap[cell] = 1;
+          }
+        }
+
+        // 2. Initialize effective countdown timers for all active bombs
+        let anyActiveBombs = false;
+        for (let i = 0; i < MAX_BOMBS; i++) {
+          const b = bombPool[i];
+          if (b.active) {
+            effBombTimers[i] = Math.max(2, b.timer);
+            anyActiveBombs = true;
+          } else {
+            effBombTimers[i] = 0;
+          }
+        }
+        if (!anyActiveBombs) return;
+
+        // 3. Chain-Reaction Fuse Propagation:
+        // If Bomb A's blast ray reaches Bomb B, Bomb B's effective timer becomes min(timerB, timerA)
+        for (let pass = 0; pass < 4; pass++) {
+          let changed = false;
+          for (let i = 0; i < MAX_BOMBS; i++) {
+            const b = bombPool[i];
+            if (!b.active) continue;
+            const myTimer = effBombTimers[i];
+
+            for (let d = 0; d < 4; d++) {
+              const dx = DIR_DX[d];
+              const dy = DIR_DY[d];
+              for (let s = 1; s <= b.range; s++) {
+                const tx = b.gx + dx * s;
+                const ty = b.gy + dy * s;
+                if (!inBounds(tx, ty)) break;
+                const tCell = idx(tx, ty);
+                const tType = tileMap[tCell];
+                if (tType !== TILE_SAND) break; // Blocked by water, pillar, palm, or rock
+
+                const otherRef = bombIndexMap[tCell];
+                if (otherRef !== 0) {
+                  const otherIdx = otherRef - 1;
+                  if (bombPool[otherIdx].active && myTimer < effBombTimers[otherIdx]) {
+                    effBombTimers[otherIdx] = myTimer;
+                    changed = true;
+                  }
+                }
+              }
+            }
+          }
+          if (!changed) break;
+        }
+
+        // 4. Stamp exact remaining ticks onto dangerTicksMap for every bomb blast corridor
+        for (let i = 0; i < MAX_BOMBS; i++) {
+          const b = bombPool[i];
+          if (!b.active) continue;
+          const effTimer = effBombTimers[i];
+          const cCell = idx(b.gx, b.gy);
+
+          if (dangerMap[cCell] < 1) dangerMap[cCell] = 1;
+          if (dangerTicksMap[cCell] === 0 || effTimer < dangerTicksMap[cCell]) {
+            dangerTicksMap[cCell] = effTimer;
+          }
+
+          for (let d = 0; d < 4; d++) {
+            const dx = DIR_DX[d];
+            const dy = DIR_DY[d];
+            for (let s = 1; s <= b.range; s++) {
+              const tx = b.gx + dx * s;
+              const ty = b.gy + dy * s;
+              if (!inBounds(tx, ty)) break;
+              const tCell = idx(tx, ty);
+              const tType = tileMap[tCell];
+              if (tType !== TILE_SAND) break; // Ray stops at obstacles/walls
+
+              if (dangerMap[tCell] < 1) dangerMap[tCell] = 1;
+              if (dangerTicksMap[tCell] === 0 || effTimer < dangerTicksMap[tCell]) {
+                dangerTicksMap[tCell] = effTimer;
+              }
+            }
+          }
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 10.1: STATE 1 - TIME-AWARE ESCAPE BFS (EVADE & SURVIVAL VERIFICATION)
+      // --------------------------------------------------------------------------
+      // Finds shortest safe path to a tile with zero danger where every intermediate
+      // tile has remaining fuse ticks strictly greater than arrivalTickMargin.
+      // When useSim === true, also avoids tiles marked in simDangerMap (hypothetical bomb).
+      function findEscapeDirection(p, startGx, startGy, useSim, simFuseTicks) {
+        bfsVisited.fill(0);
+        let head = 0;
+        let tail = 0;
+
+        const startCell = idx(startGx, startGy);
+        bfsVisited[startCell] = 1;
+        bfsDist[startCell] = 0;
+        bfsFirstDir[startCell] = -1;
+
+        const ticksPerTile = Math.ceil(1.0 / p.speed); // ~12 ticks per tile
+
+        // Seed initial 4 neighbors from (startGx, startGy)
+        for (let d = 0; d < 4; d++) {
+          const nx = startGx + DIR_DX[d];
+          const ny = startGy + DIR_DY[d];
+          if (!inBounds(nx, ny)) continue;
+          const nCell = idx(nx, ny);
+          if (tileMap[nCell] !== TILE_SAND || bombIndexMap[nCell] !== 0) continue;
+          if (dangerMap[nCell] === 2 || dangerTicksMap[nCell] === 1) continue; // Never enter active flame
+
+          const arrivalMargin = ticksPerTile + 10;
+          const remTicks = dangerTicksMap[nCell];
+          if (remTicks > 0 && remTicks <= arrivalMargin) continue; // Will detonate before crossed!
+          if (useSim && simDangerMap[nCell] !== 0 && simFuseTicks <= arrivalMargin) continue;
+
+          bfsVisited[nCell] = 1;
+          bfsDist[nCell] = 1;
+          bfsFirstDir[nCell] = d;
+          astarParent[nCell] = startCell;
+          bfsQueue[tail++] = nCell;
+        }
+
+        while (head < tail) {
+          const currCell = bfsQueue[head++];
+          const dist = bfsDist[currCell];
+          const firstDir = bfsFirstDir[currCell];
+
+          const isSafeReal = (dangerTicksMap[currCell] === 0);
+          const isSafeSim = (!useSim || simDangerMap[currCell] === 0);
+
+          if (isSafeReal && isSafeSim) {
+            // Reconstruct escape path into p.aiPath for telemetry if not a dry-run simulation
+            if (!useSim) {
+              p.aiGoalCell = currCell;
+              p.aiBreachCell = -1;
+              let trace = currCell;
+              let len = 0;
+              while (trace !== startCell && len < 60) {
+                p.aiPath[len++] = trace;
+                trace = astarParent[trace];
+              }
+              // Reverse so p.aiPath[0] is the immediate next tile
+              for (let i = 0; i < (len >> 1); i++) {
+                const tmp = p.aiPath[i];
+                p.aiPath[i] = p.aiPath[len - 1 - i];
+                p.aiPath[len - 1 - i] = tmp;
+              }
+              p.aiPathLen = len;
+            }
+            return firstDir;
+          }
+
+          if (dist >= 12) continue; // Cap search radius
+
+          const cx = currCell % GRID_W;
+          const cy = (currCell / GRID_W) | 0;
+          const nextDist = dist + 1;
+          const arrivalMargin = nextDist * ticksPerTile + 10;
+
+          for (let d = 0; d < 4; d++) {
+            const nx = cx + DIR_DX[d];
+            const ny = cy + DIR_DY[d];
+            if (!inBounds(nx, ny)) continue;
+            const nCell = idx(nx, ny);
+            if (bfsVisited[nCell]) continue;
+            if (tileMap[nCell] !== TILE_SAND || bombIndexMap[nCell] !== 0) continue;
+            if (dangerMap[nCell] === 2 || dangerTicksMap[nCell] === 1) continue;
+
+            const remTicks = dangerTicksMap[nCell];
+            if (remTicks > 0 && remTicks <= arrivalMargin) continue;
+            if (useSim && simDangerMap[nCell] !== 0 && simFuseTicks <= arrivalMargin) continue;
+
+            bfsVisited[nCell] = 1;
+            bfsDist[nCell] = nextDist;
+            bfsFirstDir[nCell] = firstDir;
+            astarParent[nCell] = currCell;
+            bfsQueue[tail++] = nCell;
+          }
+        }
+
+        // Emergency fallback (only for real-time evasion if cornered by multiple bombs):
+        // pick the adjacent walkable non-flame tile with the highest remaining countdown
+        if (!useSim) {
+          let bestFallbackDir = -1;
+          let maxRemainingTicks = 1;
+          for (let d = 0; d < 4; d++) {
+            const nx = startGx + DIR_DX[d];
+            const ny = startGy + DIR_DY[d];
+            if (!inBounds(nx, ny)) continue;
+            const nCell = idx(nx, ny);
+            if (tileMap[nCell] !== TILE_SAND || bombIndexMap[nCell] !== 0) continue;
+            if (dangerMap[nCell] === 2 || dangerTicksMap[nCell] === 1) continue;
+            const t = dangerTicksMap[nCell] === 0 ? 9999 : dangerTicksMap[nCell];
+            if (t > maxRemainingTicks) {
+              maxRemainingTicks = t;
+              bestFallbackDir = d;
+            }
+          }
+          if (bestFallbackDir !== -1) {
+            const fallbackCell = idx(startGx + DIR_DX[bestFallbackDir], startGy + DIR_DY[bestFallbackDir]);
+            p.aiGoalCell = fallbackCell;
+            p.aiPath[0] = fallbackCell;
+            p.aiPathLen = 1;
+          }
+          return bestFallbackDir;
+        }
+
+        return -1;
+      }
+
+      // --------------------------------------------------------------------------
+      // 10.2: PRE-PLACEMENT SURVIVAL SIMULATION (SUICIDE PREVENTION)
+      // --------------------------------------------------------------------------
+      // Simulates the blast cross of placing a bomb at (bombGx, bombGy) in simDangerMap
+      // and verifies via Time-Aware Escape BFS that a guaranteed safe tile is reachable.
+      function canSafelyPlaceBomb(p, bombGx, bombGy) {
+        simDangerMap.fill(0);
+        const centerCell = idx(bombGx, bombGy);
+        simDangerMap[centerCell] = 1;
+
+        // If this tile is already in another bomb's blast line, our new bomb would chain-detonate early!
+        let simFuse = 155;
+        if (dangerTicksMap[centerCell] > 0 && dangerTicksMap[centerCell] < simFuse) {
+          simFuse = dangerTicksMap[centerCell];
+        }
+
+        for (let d = 0; d < 4; d++) {
+          const dx = DIR_DX[d];
+          const dy = DIR_DY[d];
+          for (let s = 1; s <= p.flameRange; s++) {
+            const tx = bombGx + dx * s;
+            const ty = bombGy + dy * s;
+            if (!inBounds(tx, ty)) break;
+            const tCell = idx(tx, ty);
+            const tType = tileMap[tCell];
+            if (tType === TILE_WATER_DEEP || tType === TILE_WATER_SHALLOW || tType === TILE_PILLAR) break;
+
+            simDangerMap[tCell] = 1;
+            if (dangerTicksMap[tCell] > 0 && dangerTicksMap[tCell] < simFuse) {
+              simFuse = dangerTicksMap[tCell];
+            }
+            if (tType === TILE_PALM || tType === TILE_ROCK) break; // Absorbed by destructible
+          }
+        }
+
+        const escapeDir = findEscapeDirection(p, bombGx, bombGy, true, simFuse);
+        return escapeDir !== -1;
+      }
+
+      // --------------------------------------------------------------------------
+      // 10.3: STATE 2 - ZERO-ALLOCATION WEIGHTED A* PATHFINDING ENGINE
+      // --------------------------------------------------------------------------
+      // Binary Min-Heap operations on pre-allocated astarHeap & astarF
+      let astarHeapSize = 0;
+
+      function heapPush(cell) {
+        let i = astarHeapSize++;
+        astarHeap[i] = cell;
+        const fVal = astarF[cell];
+        while (i > 0) {
+          const parentIdx = (i - 1) >> 1;
+          const parentCell = astarHeap[parentIdx];
+          if (fVal >= astarF[parentCell]) break;
+          astarHeap[i] = parentCell;
+          i = parentIdx;
+        }
+        astarHeap[i] = cell;
+      }
+
+      function heapPop() {
+        const top = astarHeap[0];
+        const last = astarHeap[--astarHeapSize];
+        if (astarHeapSize > 0) {
+          astarHeap[0] = last;
+          const fVal = astarF[last];
+          let i = 0;
+          const half = astarHeapSize >> 1;
+          while (i < half) {
+            let left = (i << 1) + 1;
+            let right = left + 1;
+            let bestChild = left;
+            if (right < astarHeapSize && astarF[astarHeap[right]] < astarF[astarHeap[left]]) {
+              bestChild = right;
+            }
+            if (fVal <= astarF[astarHeap[bestChild]]) break;
+            astarHeap[i] = astarHeap[bestChild];
+            i = bestChild;
+          }
+          astarHeap[i] = last;
+        }
+        return top;
+      }
+
+      // Runs Weighted A* from (startGx, startGy) to (goalGx, goalGy).
+      // Traversal Step Costs (g):
+      //   - Walkable empty sand (TILE_SAND): 10
+      //   - Exposed Powerup tile: 7 (encourages scooping upgrades along route)
+      //   - Breakable Obstacle (TILE_PALM / TILE_ROCK): 65 (routes around if quick detour exists, or blasts through!)
+      //   - Active/Imminent Danger tile (dangerTicksMap > 0): 300 (heavily penalized; never entered on step 1)
+      //   - Pillar, Water, or Active Bomb: Impassable
+      function computeWeightedAStar(p, startGx, startGy, goalGx, goalGy) {
+        const startCell = idx(startGx, startGy);
+        const goalCell = idx(goalGx, goalGy);
+        if (startCell === goalCell) {
+          p.aiPathLen = 0;
+          p.aiBreachCell = -1;
+          return true;
+        }
+
+        astarG.fill(65535);
+        astarClosed.fill(0);
+        astarHeapSize = 0;
+
+        astarG[startCell] = 0;
+        astarF[startCell] = (Math.abs(goalGx - startGx) + Math.abs(goalGy - startGy)) * 10;
+        astarParent[startCell] = -1;
+        heapPush(startCell);
+
+        let found = false;
+        while (astarHeapSize > 0) {
+          const currCell = heapPop();
+          if (astarClosed[currCell]) continue;
+          astarClosed[currCell] = 1;
+
+          if (currCell === goalCell) {
+            found = true;
+            break;
+          }
+
+          const cx = currCell % GRID_W;
+          const cy = (currCell / GRID_W) | 0;
+          const currG = astarG[currCell];
+
+          for (let d = 0; d < 4; d++) {
+            const nx = cx + DIR_DX[d];
+            const ny = cy + DIR_DY[d];
+            if (!inBounds(nx, ny)) continue;
+            const nCell = idx(nx, ny);
+            if (astarClosed[nCell]) continue;
+
+            const tType = tileMap[nCell];
+            // Impassable terrain: Water barrier, Coral Pillar, or Active Bomb
+            if (tType === TILE_WATER_DEEP || tType === TILE_WATER_SHALLOW || tType === TILE_PILLAR) continue;
+            if (bombIndexMap[nCell] !== 0 && nCell !== goalCell) continue;
+
+            // Never step directly onto a dangerous tile on the very first step from startCell
+            if (currCell === startCell && dangerTicksMap[nCell] > 0) continue;
+
+            // Compute weighted step cost
+            let stepCost = 10;
+            if (tType === TILE_PALM || tType === TILE_ROCK) {
+              stepCost = 65; // Breakable obstacle cost
+            } else if (powerupMap[nCell] !== POW_NONE) {
+              stepCost = 7;  // Powerup incentive cost
+            }
+            if (dangerTicksMap[nCell] > 0) {
+              stepCost += 300; // Heavy danger penalty
+            }
+
+            const tentativeG = currG + stepCost;
+            if (tentativeG < astarG[nCell]) {
+              astarG[nCell] = tentativeG;
+              const hCost = (Math.abs(goalGx - nx) + Math.abs(goalGy - ny)) * 10;
+              astarF[nCell] = tentativeG + hCost;
+              astarParent[nCell] = currCell;
+              heapPush(nCell);
+            }
+          }
+        }
+
+        if (!found) {
+          p.aiPathLen = 0;
+          p.aiBreachCell = -1;
+          return false;
+        }
+
+        // Reconstruct path from goalCell back to startCell
+        let trace = goalCell;
+        let len = 0;
+        while (trace !== startCell && trace !== -1 && len < 62) {
+          p.aiPath[len++] = trace;
+          trace = astarParent[trace];
+        }
+        // Reverse so p.aiPath[0] is the immediate next tile from (startGx, startGy)
+        for (let i = 0; i < (len >> 1); i++) {
+          const tmp = p.aiPath[i];
+          p.aiPath[i] = p.aiPath[len - 1 - i];
+          p.aiPath[len - 1 - i] = tmp;
+        }
+        p.aiPathLen = len;
+        p.aiGoalCell = goalCell;
+
+        // Identify the first breakable obstacle along the optimal A* path, if any
+        p.aiBreachCell = -1;
+        for (let i = 0; i < len; i++) {
+          const c = p.aiPath[i];
+          const t = tileMap[c];
+          if (t === TILE_PALM || t === TILE_ROCK) {
+            p.aiBreachCell = c;
+            break;
+          }
+        }
+        return true;
+      }
+
+      // Checks if a living opponent is currently in an unobstructed cardinal blast line from (gx, gy)
+      function isEnemyInCardinalBlastLine(p, gx, gy) {
+        for (let i = 0; i < 4; i++) {
+          const other = players[i];
+          if (other.id === p.id || !other.alive) continue;
+          const ogx = Math.floor(other.x);
+          const ogy = Math.floor(other.y);
+
+          if (ogx === gx && Math.abs(ogy - gy) <= p.flameRange) {
+            const stepY = ogy > gy ? 1 : -1;
+            let clear = true;
+            for (let y = gy + stepY; y !== ogy; y += stepY) {
+              if (tileMap[idx(gx, y)] !== TILE_SAND) { clear = false; break; }
+            }
+            if (clear) return true;
+          } else if (ogy === gy && Math.abs(ogx - gx) <= p.flameRange) {
+            const stepX = ogx > gx ? 1 : -1;
+            let clear = true;
+            for (let x = gx + stepX; x !== ogx; x += stepX) {
+              if (tileMap[idx(x, gy)] !== TILE_SAND) { clear = false; break; }
+            }
+            if (clear) return true;
+          }
+        }
+        return false;
+      }
+
+      // --------------------------------------------------------------------------
+      // 10.4: MASTER AI DECISION CONTROLLER (CALLED EVERY 60HZ TICK)
+      // --------------------------------------------------------------------------
+      function updateAutonomousAI(p) {
+        if (!p.alive) return;
+        const gx = Math.floor(p.x);
+        const gy = Math.floor(p.y);
+        const curCell = idx(gx, gy);
+
+        if (p.aiCooldown > 0) p.aiCooldown--;
+
+        // --- STATE 1: IMMEDIATE THREAT EVADE (TIME-AWARE ESCAPE BFS) ---
+        // If current tile or mid-step target tile is threatened by any bomb or flame:
+        const targetCell = p.aiHasStep ? idx(p.aiTargetGx, p.aiTargetGy) : curCell;
+        if (dangerTicksMap[curCell] > 0) {
+          p.aiState = 'EVADE';
+          const escDir = findEscapeDirection(p, gx, gy, false, 0);
+          if (escDir !== -1) {
+            p.aiTargetGx = gx + DIR_DX[escDir];
+            p.aiTargetGy = gy + DIR_DY[escDir];
+            p.aiHasStep = true;
+          }
+        } else if (p.aiHasStep && dangerTicksMap[targetCell] > 0) {
+          // Abort stepping into a tile that just became dangerous! Return to safe current tile center
+          p.aiTargetGx = gx;
+          p.aiTargetGy = gy;
+          p.aiHasStep = true;
+          p.aiState = 'EVADE';
+        }
+
+        // Execute smooth interpolated movement toward (p.aiTargetGx, p.aiTargetGy)
+        if (p.aiHasStep) {
+          const targetX = p.aiTargetGx + 0.5;
+          const targetY = p.aiTargetGy + 0.5;
+          const diffX = targetX - p.x;
+          const diffY = targetY - p.y;
+          const dist = Math.hypot(diffX, diffY);
+
+          if (dist < 0.085) {
+            p.x = targetX;
+            p.y = targetY;
+            p.aiHasStep = false;
+            p.moving = false;
+          } else {
+            let moveDx = 0, moveDy = 0;
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+              moveDx = Math.sign(diffX);
+              p.dir = moveDx > 0 ? DIR_RIGHT : DIR_LEFT;
+            } else {
+              moveDy = Math.sign(diffY);
+              p.dir = moveDy > 0 ? DIR_DOWN : DIR_UP;
+            }
+            p.moving = true;
+            moveCharacterWithCornerSlide(p, moveDx, moveDy);
+            return;
+          }
+        }
+
+        // If still standing on a dangerous tile and no step was possible, keep trying to center/evade
+        if (dangerTicksMap[curCell] > 0) {
+          p.moving = false;
+          return;
+        }
+
+        // --- STATE 2: TARGET SELECTION & WEIGHTED A* THROUGH DESTRUCTIBLES ---
+        // 2A. Check if a nearby safe exposed powerup is within 5 tiles
+        let bestGoalGx = -1;
+        let bestGoalGy = -1;
+        let isLootTarget = false;
+        let minLootDist = 6;
+
+        for (let py = PLAY_MIN_Y; py <= PLAY_MAX_Y; py++) {
+          for (let px = PLAY_MIN_X; px <= PLAY_MAX_X; px++) {
+            const c = idx(px, py);
+            if (powerupMap[c] !== POW_NONE && dangerTicksMap[c] === 0) {
+              const d = Math.abs(px - gx) + Math.abs(py - gy);
+              if (d < minLootDist) {
+                minLootDist = d;
+                bestGoalGx = px;
+                bestGoalGy = py;
+                isLootTarget = true;
+              }
+            }
+          }
+        }
+
+        // 2B. Otherwise, select the nearest living opponent (Player or rival AI)
+        if (!isLootTarget) {
+          let minRivalDist = 9999;
+          for (let i = 0; i < 4; i++) {
+            const other = players[i];
+            if (other.id !== p.id && other.alive) {
+              const d = Math.abs(other.x - p.x) + Math.abs(other.y - p.y);
+              if (d < minRivalDist) {
+                minRivalDist = d;
+                bestGoalGx = Math.floor(other.x);
+                bestGoalGy = Math.floor(other.y);
+              }
+            }
+          }
+        }
+
+        if (bestGoalGx === -1) {
+          p.moving = false;
+          p.aiPathLen = 0;
+          return;
+        }
+
+        // Run Weighted A* to the selected target
+        const hasPath = computeWeightedAStar(p, gx, gy, bestGoalGx, bestGoalGy);
+
+        // Check if we should place a bomb for OFFENSIVE ATTACK (enemy in cardinal blast line)
+        if (p.activeBombs < p.maxBombs && p.aiCooldown === 0 && isEnemyInCardinalBlastLine(p, gx, gy)) {
+          if (canSafelyPlaceBomb(p, gx, gy)) {
+            if (tryPlaceBomb(p)) {
+              if (netState.mode === 'HOST') {
+                broadcastToClients({ t: 'BOMB_PLACED', slot: p.id, gx, gy });
+              }
+              p.aiCooldown = 28;
+              rebuildDangerMap();
+              p.aiState = 'EVADE';
+              const escDir = findEscapeDirection(p, gx, gy, false, 0);
+              if (escDir !== -1) {
+                p.aiTargetGx = gx + DIR_DX[escDir];
+                p.aiTargetGy = gy + DIR_DY[escDir];
+                p.aiHasStep = true;
+              }
+              return;
+            }
+          }
+        }
+
+        if (!hasPath || p.aiPathLen === 0) {
+          p.moving = false;
+          return;
+        }
+
+        // Inspect the immediate next tile on the optimal A* path
+        const nextCell = p.aiPath[0];
+        const nextGx = nextCell % GRID_W;
+        const nextGy = (nextCell / GRID_W) | 0;
+        const nextType = tileMap[nextCell];
+
+        // --- OBSTACLE BREACHING LOGIC ---
+        // If the next tile on the A* path is a breakable Palm Tree or Coastal Rock,
+        // the AI knows it MUST destroy this obstacle to reach its target!
+        if (nextType === TILE_PALM || nextType === TILE_ROCK) {
+          p.aiState = 'BREACH';
+          // Face the obstacle
+          if (nextGx > gx) p.dir = DIR_RIGHT;
+          else if (nextGx < gx) p.dir = DIR_LEFT;
+          else if (nextGy > gy) p.dir = DIR_DOWN;
+          else if (nextGy < gy) p.dir = DIR_UP;
+
+          if (p.activeBombs < p.maxBombs && p.aiCooldown === 0) {
+            // Verify guaranteed escape route BEFORE placing the breaching bomb!
+            if (canSafelyPlaceBomb(p, gx, gy)) {
+              if (tryPlaceBomb(p)) {
+                if (netState.mode === 'HOST') {
+                  broadcastToClients({ t: 'BOMB_PLACED', slot: p.id, gx, gy });
+                }
+                p.aiCooldown = 28;
+                rebuildDangerMap();
+                p.aiState = 'EVADE';
+                const escDir = findEscapeDirection(p, gx, gy, false, 0);
+                if (escDir !== -1) {
+                  p.aiTargetGx = gx + DIR_DX[escDir];
+                  p.aiTargetGy = gy + DIR_DY[escDir];
+                  p.aiHasStep = true;
+                }
+                return;
+              }
+            }
+          }
+          // Wait safely if bomb is on cooldown or currently unsafe to drop
+          p.moving = false;
+          return;
+        }
+
+        // --- WALKING ALONG THE A* ROUTE ---
+        if (nextType === TILE_SAND && bombIndexMap[nextCell] === 0 && dangerTicksMap[nextCell] === 0) {
+          p.aiState = isLootTarget ? 'LOOT' : (p.aiBreachCell !== -1 ? 'BREACH' : 'HUNT');
+          p.aiTargetGx = nextGx;
+          p.aiTargetGy = nextGy;
+          p.aiHasStep = true;
+        } else {
+          // Next tile is temporarily blocked by a bomb blast corridor; wait safely at current tile
+          p.moving = false;
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 11. DETERMINISTIC 60HZ FIXED-TIMESTEP UPDATE
+      // --------------------------------------------------------------------------
+      function updateFixedTick() {
+        if (matchState !== 'PLAYING') return;
+        gameTick++;
+
+        if (screenShakeTicks > 0) screenShakeTicks--;
+
+        // 1. Snapshot previous positions for smooth state interpolation
+        for (let i = 0; i < 4; i++) {
+          const p = players[i];
+          p.prevX = p.x;
+          p.prevY = p.y;
+        }
+
+        // 2. Update Ticking Bombs & Fuse Sparks
+        for (let i = 0; i < MAX_BOMBS; i++) {
+          const b = bombPool[i];
+          if (!b.active) continue;
+
+          // Emit sizzling fuse spark particle every 3 ticks
+          if (gameTick % 3 === 0) {
+            spawnParticle(
+              (b.gx + 0.52) * TILE_PX,
+              (b.gy + 0.22) * TILE_PX,
+              (Math.random() - 0.5) * 1.6,
+              -1.2 - Math.random() * 1.4,
+              3,
+              (gameTick % 2 === 0) ? 0 : 1,
+              10,
+              0.92,
+              0.08
+            );
+          }
+
+          b.timer--;
+          if (b.timer <= 0) {
+            detonateBomb(i);
+          }
+        }
+
+        // 3. Update Active Explosions
+        for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+          const ex = explosionPool[i];
+          if (!ex.active) continue;
+          ex.timer--;
+          if (ex.timer <= 0) {
+            ex.active = false;
+          }
+        }
+
+        // 4. Update Disintegrating Obstacles & Reveal Powerups
+        for (let i = 0; i < MAX_DESTRUCT; i++) {
+          const d = destructPool[i];
+          if (!d.active) continue;
+          d.timer--;
+          if (d.timer <= 0) {
+            d.active = false;
+            if (d.dropPowerup !== POW_NONE) {
+              powerupMap[idx(d.gx, d.gy)] = d.dropPowerup;
+            }
+          }
+        }
+
+        // 5. Rebuild O(1) Danger & Flame Map
+        rebuildDangerMap();
+
+        // 6. Update Local Player Input & Movement (Controls assigned slot 0..3)
+        const localPlayer = players[netState.localSlot];
+        if (localPlayer && localPlayer.alive) {
+          if (bombRequested) {
+            if (tryPlaceBomb(localPlayer)) {
+              if (netState.mode === 'HOST') {
+                broadcastToClients({
+                  t: 'BOMB_PLACED',
+                  slot: netState.localSlot,
+                  gx: Math.floor(localPlayer.x),
+                  gy: Math.floor(localPlayer.y)
+                });
+              } else if (netState.mode === 'CLIENT' && netState.hostConn && netState.hostConn.open) {
+                netState.hostConn.send({ t: 'BOMB' });
+              }
+            }
+            bombRequested = false;
+          }
+
+          let dx = 0, dy = 0;
+          if (keysDown.up) { dy = -1; localPlayer.dir = DIR_UP; }
+          else if (keysDown.down) { dy = 1; localPlayer.dir = DIR_DOWN; }
+          else if (keysDown.left) { dx = -1; localPlayer.dir = DIR_LEFT; }
+          else if (keysDown.right) { dx = 1; localPlayer.dir = DIR_RIGHT; }
+
+          if (dx !== 0 || dy !== 0) {
+            localPlayer.moving = true;
+            moveCharacterWithCornerSlide(localPlayer, dx, dy);
+          } else {
+            localPlayer.moving = false;
+          }
+        } else {
+          bombRequested = false;
+        }
+
+        // 7. Update Autonomous AI Contestants (runs in SOLO or on HOST)
+        if (netState.mode !== 'CLIENT') {
+          for (let i = 0; i < 4; i++) {
+            const isSimOnline = (netState.mode === 'HOST' && netState.simulatedSlots[i]);
+            if ((players[i].isAI || isSimOnline) && players[i].alive) {
+              updateAutonomousAI(players[i]);
+            }
+          }
+        }
+
+        // 7.5: Network State Synchronization (30Hz = every 2 ticks)
+        if (gameTick % 2 === 0) {
+          if (netState.mode === 'CLIENT' && netState.hostConn && netState.hostConn.open && localPlayer) {
+            netState.hostConn.send({
+              t: 'INPUT',
+              x: localPlayer.x,
+              y: localPlayer.y,
+              dir: localPlayer.dir,
+              moving: localPlayer.moving
+            });
+          } else if (netState.mode === 'HOST') {
+            broadcastToClients({
+              t: 'STATE',
+              p: [
+                { x: players[0].x, y: players[0].y, d: players[0].dir, m: players[0].moving, a: players[0].alive, mb: players[0].maxBombs, ab: players[0].activeBombs, fr: players[0].flameRange, sp: players[0].speed, ais: players[0].aiState },
+                { x: players[1].x, y: players[1].y, d: players[1].dir, m: players[1].moving, a: players[1].alive, mb: players[1].maxBombs, ab: players[1].activeBombs, fr: players[1].flameRange, sp: players[1].speed, ais: players[1].aiState },
+                { x: players[2].x, y: players[2].y, d: players[2].dir, m: players[2].moving, a: players[2].alive, mb: players[2].maxBombs, ab: players[2].activeBombs, fr: players[2].flameRange, sp: players[2].speed, ais: players[2].aiState },
+                { x: players[3].x, y: players[3].y, d: players[3].dir, m: players[3].moving, a: players[3].alive, mb: players[3].maxBombs, ab: players[3].activeBombs, fr: players[3].flameRange, sp: players[3].speed, ais: players[3].aiState }
+              ]
+            });
+          }
+        }
+
+        // 8. Advance Rapid Walk-Cycle Animations & Check Flame Eliminations
+        let aliveCount = 0;
+        let lastSurvivor = null;
+        for (let i = 0; i < 4; i++) {
+          const p = players[i];
+          if (!p.alive) continue;
+
+          if (p.moving) {
+            p.animTick++;
+            if (p.animTick >= 5) { // Crisp, fast 4-frame walk cycle (12 steps/sec)
+              p.animTick = 0;
+              p.animFrame = (p.animFrame + 1) & 3;
+            }
+          } else {
+            p.animTick = 0;
+            p.animFrame = 0;
+          }
+
+          // Check if standing in an active explosion beam (dangerMap === 2)
+          const pgx = Math.floor(p.x);
+          const pgy = Math.floor(p.y);
+          if (inBounds(pgx, pgy) && dangerMap[idx(pgx, pgy)] === 2) {
+            p.alive = false;
+            sfx.playEliminated();
+            for (let k = 0; k < 24; k++) {
+              const ang = (k / 24) * Math.PI * 2;
+              const spd = 1.5 + Math.random() * 3.5;
+              spawnParticle(
+                p.x * TILE_PX,
+                p.y * TILE_PX,
+                Math.cos(ang) * spd,
+                Math.sin(ang) * spd,
+                4,
+                k % 3,
+                25,
+                0.92,
+                0.05
+              );
+            }
+            updateRosterHUD();
+            if (p.id === netState.localSlot) updatePlayerHUD();
+          } else {
+            aliveCount++;
+            lastSurvivor = p;
+          }
+        }
+
+        // 9. Update Shockwave Rings & Pooled Particles
+        for (let i = 0; i < MAX_SHOCKWAVES; i++) {
+          const sw = shockwavePool[i];
+          if (!sw.active) continue;
+          sw.life--;
+          sw.radius += (sw.maxRadius - sw.radius) * 0.22;
+          if (sw.life <= 0) sw.active = false;
+        }
+
+        let pCount = 0;
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          const pt = particlePool[i];
+          if (!pt.active) continue;
+          pt.x += pt.vx;
+          pt.y += pt.vy;
+          pt.vx *= pt.drag;
+          pt.vy = pt.vy * pt.drag + pt.gravity;
+          pt.life--;
+          if (pt.life <= 0) {
+            pt.active = false;
+          } else {
+            pCount++;
+          }
+        }
+        activeParticleCount = pCount;
+
+        // 10. Check Match End Condition
+        if (netState.mode === 'SOLO') {
+          if (!localPlayer.alive && matchState === 'PLAYING') {
+            showMatchBanner('ELIMINATED', 'DEFEAT // SCORCHED ON THE SHORE', 'You were caught in a blast wave. Press R or click below to launch a rematch.');
+            matchState = 'DEFEAT';
+          } else if (localPlayer.alive && aliveCount === 1 && matchState === 'PLAYING') {
+            showMatchBanner('VICTORY', 'ISLAND CHAMPION!', 'You outmaneuvered all rival blasters on the beach!');
+            matchState = 'VICTORY';
+          }
+        } else {
+          // Online Multiplayer Match End: continue match until 1 (or 0) survivor remains so eliminated players can spectate!
+          if (aliveCount <= 1 && matchState === 'PLAYING') {
+            if (lastSurvivor && lastSurvivor.id === netState.localSlot) {
+              showMatchBanner('ONLINE VICTORY', `${lastSurvivor.baseName.toUpperCase()} WINS THE COVE!`, 'You are the last blaster standing in the online arena!');
+              matchState = 'VICTORY';
+            } else if (lastSurvivor) {
+              showMatchBanner('ROUND COMPLETE', `${lastSurvivor.baseName.toUpperCase()} (P${lastSurvivor.id + 1}) WINS!`, 'Press R or click below to launch the next online round.');
+              matchState = 'DEFEAT';
+            } else {
+              showMatchBanner('DRAW GAME', 'DOUBLE KNOCKOUT!', 'All final blasters were eliminated simultaneously!');
+              matchState = 'DEFEAT';
+            }
+          }
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 12. RENDER PASS (INTERPOLATED 60HZ+ VIA ATLAS BLITS)
+      // --------------------------------------------------------------------------
+      const gameCanvas = document.getElementById('gameCanvas');
+      const ctx = gameCanvas.getContext('2d', { alpha: false });
+      ctx.imageSmoothingEnabled = false;
+
+      const spritePreviewCanvas = document.getElementById('spritePreviewCanvas');
+      const previewCtx = spritePreviewCanvas.getContext('2d');
+      previewCtx.imageSmoothingEnabled = false;
+
+      // Helper to blit a 48x48 tile from the offscreen atlas
+      function blitAtlasTile(targetCtx, atlasCol, atlasRow, destX, destY) {
+        targetCtx.drawImage(
+          atlasCanvas,
+          atlasCol * TILE_PX,
+          atlasRow * TILE_PX,
+          TILE_PX,
+          TILE_PX,
+          destX,
+          destY,
+          TILE_PX,
+          TILE_PX
+        );
+      }
+
+      function renderScene(alpha) {
+        ctx.save();
+
+        // Subtle camera shake on bomb detonation
+        if (screenShakeTicks > 0) {
+          const mag = screenShakeTicks * 0.45;
+          const sx = Math.round((Math.random() - 0.5) * mag * 2);
+          const sy = Math.round((Math.random() - 0.5) * mag * 2);
+          ctx.translate(sx, sy);
+        }
+
+        const waterFrame = Math.floor(gameTick / 7) & 7; // 8 smooth wave frames
+        const palmFrame = Math.floor(gameTick / 16) & 3; // 4 gentle palm sway frames
+        const rockFrame = Math.floor(gameTick / 30) & 1;
+
+        // --- PASS 1: TERRAIN, 4-BLOCK ANIMATED WATER BARRIER & OBSTACLES ---
+        for (let gy = 0; gy < GRID_H; gy++) {
+          const destY = gy * TILE_PX;
+          for (let gx = 0; gx < GRID_W; gx++) {
+            const destX = gx * TILE_PX;
+            const cell = idx(gx, gy);
+            const t = tileMap[cell];
+
+            if (t === TILE_WATER_DEEP) {
+              blitAtlasTile(ctx, waterFrame, 0, destX, destY);
+            } else if (t === TILE_WATER_SHALLOW) {
+              blitAtlasTile(ctx, 8 + waterFrame, 0, destX, destY);
+              // Render animated white shoreline foam where water meets the playable beach sand!
+              if (gy === PLAY_MIN_Y - 1 && gx >= PLAY_MIN_X && gx <= PLAY_MAX_X) {
+                blitAtlasTile(ctx, 0, 1, destX, destY); // Top shoreline foam
+              }
+              if (gy === PLAY_MAX_Y + 1 && gx >= PLAY_MIN_X && gx <= PLAY_MAX_X) {
+                blitAtlasTile(ctx, 1, 1, destX, destY); // Bottom shoreline foam
+              }
+              if (gx === PLAY_MIN_X - 1 && gy >= PLAY_MIN_Y && gy <= PLAY_MAX_Y) {
+                blitAtlasTile(ctx, 2, 1, destX, destY); // Left shoreline foam
+              }
+              if (gx === PLAY_MAX_X + 1 && gy >= PLAY_MIN_Y && gy <= PLAY_MAX_Y) {
+                blitAtlasTile(ctx, 3, 1, destX, destY); // Right shoreline foam
+              }
+            } else {
+              // Playable Beach Sand base
+              const sVar = sandVariantMap[cell];
+              blitAtlasTile(ctx, 4 + sVar, 1, destX, destY);
+
+              // Powerup on sand
+              const pow = powerupMap[cell];
+              if (pow !== POW_NONE) {
+                const floatOffset = Math.round(Math.sin(gameTick * 0.12 + gx + gy) * 2.5);
+                blitAtlasTile(ctx, 11 + pow, 2, destX, destY + floatOffset);
+              }
+
+              // Obstacles on sand
+              if (t === TILE_PILLAR) {
+                blitAtlasTile(ctx, 8, 1, destX, destY);
+              } else if (t === TILE_PALM) {
+                blitAtlasTile(ctx, 9 + ((palmFrame + gx) & 3), 1, destX, destY);
+              } else if (t === TILE_ROCK) {
+                blitAtlasTile(ctx, 13 + rockFrame, 1, destX, destY);
+              }
+            }
+          }
+        }
+
+        // --- PASS 2: DISINTEGRATING OBSTACLES ---
+        for (let i = 0; i < MAX_DESTRUCT; i++) {
+          const d = destructPool[i];
+          if (!d.active) continue;
+          const progress = 1 - (d.timer / d.maxTimer);
+          const frame = Math.min(5, Math.floor(progress * 6));
+          const col = (d.tileType === TILE_PALM ? 0 : 6) + frame;
+          blitAtlasTile(ctx, col, 2, d.gx * TILE_PX, d.gy * TILE_PX);
+        }
+
+        // --- PASS 3: PULSING PLACED BOMBS ---
+        for (let i = 0; i < MAX_BOMBS; i++) {
+          const b = bombPool[i];
+          if (!b.active) continue;
+          const urgency = b.timer < 45 ? 4 : 8;
+          const bFrame = Math.floor(gameTick / urgency) % 6;
+          blitAtlasTile(ctx, bFrame, 3, b.gx * TILE_PX, b.gy * TILE_PX);
+        }
+
+        // --- PASS 4: MULTI-STAGE SMOOTH EXPLOSION PLASMA BEAMS ---
+        for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+          const ex = explosionPool[i];
+          if (!ex.active) continue;
+
+          // Smooth opacity curve: instant flash, sustained plasma, smooth fadeout
+          const lifeRatio = ex.timer / ex.maxTimer;
+          ctx.globalAlpha = lifeRatio < 0.35 ? (lifeRatio / 0.35) : 1.0;
+
+          const cx = ex.gx * TILE_PX;
+          const cy = ex.gy * TILE_PX;
+
+          // Center Core (Col 6, Row 3)
+          blitAtlasTile(ctx, 6, 3, cx, cy);
+
+          // Up Beam
+          for (let s = 1; s <= ex.upLen; s++) {
+            const col = (s === ex.upLen) ? 9 : 8;
+            blitAtlasTile(ctx, col, 3, cx, (ex.gy - s) * TILE_PX);
+          }
+          // Down Beam
+          for (let s = 1; s <= ex.downLen; s++) {
+            const col = (s === ex.downLen) ? 10 : 8;
+            blitAtlasTile(ctx, col, 3, cx, (ex.gy + s) * TILE_PX);
+          }
+          // Left Beam
+          for (let s = 1; s <= ex.leftLen; s++) {
+            const col = (s === ex.leftLen) ? 11 : 7;
+            blitAtlasTile(ctx, col, 3, (ex.gx - s) * TILE_PX, cy);
+          }
+          // Right Beam
+          for (let s = 1; s <= ex.rightLen; s++) {
+            const col = (s === ex.rightLen) ? 12 : 7;
+            blitAtlasTile(ctx, col, 3, (ex.gx + s) * TILE_PX, cy);
+          }
+        }
+        ctx.globalAlpha = 1.0;
+
+        // --- PASS 4.5: INTERACTIVE AI VISION & TELEMETRY OVERLAY ([V] KEY) ---
+        if (aiVisionEnabled) {
+          ctx.save();
+          // 1. Render Danger Zone Countdown Overlays on threatened tiles
+          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          for (let gy = PLAY_MIN_Y; gy <= PLAY_MAX_Y; gy++) {
+            for (let gx = PLAY_MIN_X; gx <= PLAY_MAX_X; gx++) {
+              const c = idx(gx, gy);
+              const ticks = dangerTicksMap[c];
+              if (ticks > 0) {
+                const dx = gx * TILE_PX;
+                const dy = gy * TILE_PX;
+                const urgent = ticks <= 40;
+                ctx.fillStyle = urgent ? 'rgba(239, 68, 68, 0.36)' : 'rgba(244, 63, 94, 0.20)';
+                ctx.fillRect(dx + 2, dy + 2, TILE_PX - 4, TILE_PX - 4);
+                ctx.strokeStyle = urgent ? 'rgba(254, 202, 202, 0.75)' : 'rgba(251, 113, 133, 0.45)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(dx + 3, dy + 3, TILE_PX - 6, TILE_PX - 6);
+
+                if (ticks > 1) {
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillText(`${ticks}t`, dx + 24, dy + 24);
+                }
+              }
+            }
+          }
+
+          // 2. Render Each Living AI Bot's Live A* / Escape Path & Target Reticles
+          for (let i = 1; i < 4; i++) {
+            const bot = players[i];
+            if (!bot.alive || bot.aiPathLen === 0) continue;
+
+            ctx.strokeStyle = bot.badgeColor;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([6, 5]);
+            ctx.beginPath();
+            ctx.moveTo(bot.x * TILE_PX, bot.y * TILE_PX);
+            for (let s = 0; s < bot.aiPathLen; s++) {
+              const pCell = bot.aiPath[s];
+              const px = ((pCell % GRID_W) + 0.5) * TILE_PX;
+              const py = (((pCell / GRID_W) | 0) + 0.5) * TILE_PX;
+              ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Highlight Destructible Breach Target (Palm Tree / Rock to blast)
+            if (bot.aiBreachCell !== -1) {
+              const bx = (bot.aiBreachCell % GRID_W) * TILE_PX;
+              const by = ((bot.aiBreachCell / GRID_W) | 0) * TILE_PX;
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = 2.5;
+              ctx.strokeRect(bx + 4, by + 4, TILE_PX - 8, TILE_PX - 8);
+              ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+              ctx.fillRect(bx + 4, by + 4, TILE_PX - 8, TILE_PX - 8);
+            }
+
+            // Highlight Final Goal Reticle (Opponent / Safe Tile / Powerup)
+            if (bot.aiGoalCell !== -1) {
+              const gx = ((bot.aiGoalCell % GRID_W) + 0.5) * TILE_PX;
+              const gy = (((bot.aiGoalCell / GRID_W) | 0) + 0.5) * TILE_PX;
+              ctx.strokeStyle = bot.badgeColor;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(gx, gy, 10 + Math.sin(gameTick * 0.15) * 2, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+
+        // --- PASS 5: INTERPOLATED CHARACTER SPRITES (ARMED VS UNARMED RIG SWITCH) ---
+        // Sort by Y coordinate by iterating in order of vertical position without allocating arrays
+        const drawOrder = [0, 1, 2, 3];
+        for (let m = 0; m < 3; m++) {
+          for (let n = m + 1; n < 4; n++) {
+            if (players[drawOrder[m]].y > players[drawOrder[n]].y) {
+              const tmp = drawOrder[m];
+              drawOrder[m] = drawOrder[n];
+              drawOrder[n] = tmp;
+            }
+          }
+        }
+
+        for (let k = 0; k < 4; k++) {
+          const p = players[drawOrder[k]];
+          if (!p.alive) continue;
+
+          // Interpolated world position for silky-smooth rendering
+          const interpX = p.prevX + (p.x - p.prevX) * alpha;
+          const interpY = p.prevY + (p.y - p.prevY) * alpha;
+          const destX = Math.round((interpX - 0.5) * TILE_PX);
+          const destY = Math.round((interpY - 0.58) * TILE_PX);
+
+          // Select Armed (Holding Bomb) vs Unarmed (Swinging Empty Hands) Sprite Row!
+          const isHoldingBomb = (p.activeBombs === 0);
+          const charRow = 4 + p.id * 2 + (isHoldingBomb ? 0 : 1);
+          const charCol = p.dir * 4 + p.animFrame;
+
+          blitAtlasTile(ctx, charCol, charRow, destX, destY);
+
+          // Crisp tactical player indicator tag above Local Player, Online Friends, or AI Bots
+          if (p.id === netState.localSlot) {
+            ctx.save();
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = p.badgeColor;
+            ctx.fillRect(destX + 10, destY - 12, 28, 11);
+            ctx.fillStyle = '#020617';
+            ctx.fillText('YOU', destX + 24, destY - 4);
+            ctx.restore();
+          } else if (!p.isAI) {
+            // Online Human Friend Tag (P1..P4)
+            ctx.save();
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(destX + 10, destY - 12, 28, 11);
+            ctx.strokeStyle = p.badgeColor;
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(destX + 10, destY - 12, 28, 11);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(`P${p.id + 1}`, destX + 24, destY - 4);
+            ctx.restore();
+          } else if (aiVisionEnabled) {
+            // Render Live AI State Badge (EVADE, BREACH, HUNT, LOOT) above each AI bot
+            ctx.save();
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            const badgeW = 42;
+            const badgeX = destX + 24 - (badgeW >> 1);
+            const badgeY = destY - 12;
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.fillRect(badgeX, badgeY, badgeW, 12);
+            ctx.strokeStyle = p.badgeColor;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(badgeX, badgeY, badgeW, 12);
+            ctx.fillStyle = p.aiState === 'EVADE' ? '#fda4af' : (p.aiState === 'BREACH' ? '#fde047' : '#e2e8f0');
+            ctx.fillText(p.aiState, destX + 24, badgeY + 9);
+            ctx.restore();
+          }
+        }
+
+        // --- PASS 6: EXPANDING SHOCKWAVE RINGS & POOLED PARTICLES ---
+        for (let i = 0; i < MAX_SHOCKWAVES; i++) {
+          const sw = shockwavePool[i];
+          if (!sw.active) continue;
+          const ratio = sw.life / sw.maxLife;
+          ctx.strokeStyle = ratio > 0.5 ? '#fde047' : '#f97316';
+          ctx.lineWidth = Math.max(1.5, ratio * 5);
+          ctx.globalAlpha = ratio * 0.85;
+          ctx.beginPath();
+          ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          const pt = particlePool[i];
+          if (!pt.active) continue;
+          ctx.globalAlpha = Math.min(1, (pt.life / pt.maxLife) * 1.4);
+          ctx.fillStyle = PARTICLE_COLORS[pt.colorIdx];
+          ctx.fillRect(
+            Math.round(pt.x - pt.size * 0.5),
+            Math.round(pt.y - pt.size * 0.5),
+            pt.size,
+            pt.size
+          );
+        }
+        ctx.globalAlpha = 1.0;
+
+        ctx.restore();
+
+        // --- UPDATE LIVE LOCAL PLAYER SPRITE PREVIEW IN SIDEBAR ---
+        const localP = players[netState.localSlot] || players[0];
+        previewCtx.clearRect(0, 0, 48, 48);
+        const localHolding = (localP.activeBombs === 0);
+        const localRow = 4 + localP.id * 2 + (localHolding ? 0 : 1);
+        const localCol = localP.dir * 4 + localP.animFrame;
+        blitAtlasTile(previewCtx, localCol, localRow, 0, 0);
+      }
+
+      // --------------------------------------------------------------------------
+      // 13. TACTICAL HUD & MODAL CONTROLLERS
+      // --------------------------------------------------------------------------
+      const hudBombHoldState = document.getElementById('hudBombHoldState');
+      const hudBombHoldDesc = document.getElementById('hudBombHoldDesc');
+      const statBombs = document.getElementById('statBombs');
+      const statRange = document.getElementById('statRange');
+      const statSpeed = document.getElementById('statSpeed');
+      const p1AliveBadge = document.getElementById('p1AliveBadge');
+      const rosterContainer = document.getElementById('rosterContainer');
+      const rosterAliveCount = document.getElementById('rosterAliveCount');
+
+      function updatePlayerHUD() {
+        const localP = players[netState.localSlot] || players[0];
+        const ready = Math.max(0, localP.maxBombs - localP.activeBombs);
+        statBombs.textContent = `${ready} / ${localP.maxBombs}`;
+        statRange.textContent = `${localP.flameRange} Tiles`;
+        const spdPct = Math.round((localP.speed / 0.082) * 100);
+        statSpeed.textContent = `${spdPct}%`;
+
+        if (!localP.alive) {
+          p1AliveBadge.textContent = netState.mode === 'SOLO' ? 'ELIMINATED' : 'SPECTATING';
+          p1AliveBadge.className = 'px-2 py-0.5 text-[11px] font-mono-tech font-bold rounded bg-rose-500/20 text-rose-300 border border-rose-500/30';
+        } else {
+          p1AliveBadge.textContent = 'ACTIVE';
+          p1AliveBadge.className = 'px-2 py-0.5 text-[11px] font-mono-tech font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        }
+
+        if (localP.activeBombs === 0) {
+          hudBombHoldState.textContent = 'HOLDING BOMB IN HAND';
+          hudBombHoldState.className = 'text-sm font-extrabold text-amber-300 tracking-tight truncate';
+          hudBombHoldDesc.textContent = 'Bomb ready in hand. Placing a bomb immediately switches sprite to unarmed.';
+        } else {
+          hudBombHoldState.textContent = 'UNARMED (BOMB PLACED)';
+          hudBombHoldState.className = 'text-sm font-extrabold text-cyan-300 tracking-tight truncate';
+          hudBombHoldDesc.textContent = `Swinging empty hands (${localP.activeBombs} active bomb on sand). Returns on blast.`;
+        }
+      }
+
+      function updateRosterHUD() {
+        let aliveTotal = 0;
+        let html = '';
+        for (let i = 0; i < 4; i++) {
+          const p = players[i];
+          if (p.alive) aliveTotal++;
+          const holdingState = p.activeBombs === 0 ? 'ARMED (Bomb)' : 'UNARMED';
+          const aiTag = p.isAI && p.alive ? ` &bull; <span class="text-emerald-300">${p.aiState}</span>` : '';
+          const stateBadgeClass = p.alive
+            ? (p.activeBombs === 0 ? 'text-amber-300 bg-amber-500/15 border-amber-400/30' : 'text-cyan-300 bg-cyan-500/15 border-cyan-400/30')
+            : 'text-rose-300 bg-rose-500/15 border-rose-400/30';
+
+          html += `
+            <div class="flex items-center justify-between bg-slate-900/80 border ${p.alive ? 'border-slate-800' : 'border-rose-900/40 opacity-60'} rounded-xl px-3 py-2">
+              <div class="flex items-center gap-2.5">
+                <span class="w-2.5 h-2.5 rounded-full" style="background:${p.badgeColor}"></span>
+                <div>
+                  <div class="text-xs font-bold text-white leading-none">${p.name}</div>
+                  <div class="text-[10px] font-mono-tech text-slate-400 mt-1">Bombs: ${p.maxBombs} &bull; Blast: ${p.flameRange}${aiTag}</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 text-[10px] font-mono-tech font-semibold rounded border ${stateBadgeClass}">
+                ${p.alive ? holdingState : 'OUT'}
+              </span>
+            </div>
+          `;
+        }
+        rosterContainer.innerHTML = html;
+        rosterAliveCount.textContent = `${aliveTotal} Alive`;
+      }
+
+      function populateLegendCanvases() {
+        const pairs = [
+          { id: 'legendPalm', col: 9, row: 1 },
+          { id: 'legendRock', col: 13, row: 1 },
+          { id: 'legendPillar', col: 8, row: 1 },
+          { id: 'legendWater', col: 8, row: 0 },
+          { id: 'legendPowBomb', col: 12, row: 2 },
+          { id: 'legendPowFlame', col: 13, row: 2 },
+          { id: 'legendPowSpeed', col: 14, row: 2 }
+        ];
+        for (let i = 0; i < pairs.length; i++) {
+          const item = pairs[i];
+          const cnv = document.getElementById(item.id);
+          if (cnv) {
+            const cCtx = cnv.getContext('2d');
+            cCtx.imageSmoothingEnabled = false;
+            blitAtlasTile(cCtx, item.col, item.row, 0, 0);
+          }
+        }
+
+        // Copy full atlas into the Inspector Modal Canvas
+        const inspectorCanvas = document.getElementById('atlasInspectorCanvas');
+        inspectorCanvas.width = atlasCanvas.width;
+        inspectorCanvas.height = atlasCanvas.height;
+        const iCtx = inspectorCanvas.getContext('2d');
+        iCtx.imageSmoothingEnabled = false;
+        iCtx.drawImage(atlasCanvas, 0, 0);
+      }
+
+      function showMatchBanner(badge, title, subtitle) {
+        document.getElementById('overlayBadge').textContent = badge;
+        document.getElementById('overlayTitle').textContent = title;
+        document.getElementById('overlaySubtitle').textContent = subtitle;
+        document.getElementById('matchOverlay').classList.remove('hidden');
+      }
+
+      function togglePause() {
+        if (matchState === 'PLAYING') {
+          matchState = 'PAUSED';
+          showMatchBanner('SIMULATION PAUSED', 'GAME PAUSED', 'Deterministic 60Hz loop is suspended. Press P or click below to resume.');
+          document.getElementById('btnOverlayAction').textContent = 'Resume Match [P]';
+        } else if (matchState === 'PAUSED') {
+          matchState = 'PLAYING';
+          document.getElementById('matchOverlay').classList.add('hidden');
+          document.getElementById('btnOverlayAction').textContent = 'Play Again [R]';
+        }
+      }
+
+      function toggleAtlasModal() {
+        const modal = document.getElementById('atlasModal');
+        modal.classList.toggle('hidden');
+      }
+
+      function toggleMpModal() {
+        const modal = document.getElementById('mpModal');
+        modal.classList.toggle('hidden');
+        renderMpSlotsUI();
+      }
+
+      function toggleAiVision() {
+        aiVisionEnabled = !aiVisionEnabled;
+        const lbl = document.getElementById('lblAiVision');
+        const btn = document.getElementById('btnAiVision');
+        if (lbl) lbl.textContent = aiVisionEnabled ? 'AI Vision [V]: ON' : 'AI Vision [V]: OFF';
+        if (btn) {
+          btn.className = aiVisionEnabled
+            ? 'game-btn px-3 py-1.5 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-400/50 text-xs font-semibold flex items-center gap-1.5'
+            : 'game-btn px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 text-xs font-semibold flex items-center gap-1.5';
+        }
+      }
+
+      document.getElementById('btnMultiplayer').addEventListener('click', () => toggleMpModal());
+      document.getElementById('btnCloseMp').addEventListener('click', () => toggleMpModal());
+      document.getElementById('btnCreateRoom').addEventListener('click', () => hostOnlineRoom());
+      document.getElementById('btnJoinRoom').addEventListener('click', () => {
+        const code = document.getElementById('inpJoinCode').value;
+        joinOnlineRoom(code);
+      });
+      document.getElementById('inpJoinCode').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          joinOnlineRoom(e.target.value);
+        }
+      });
+      document.getElementById('chkFillAi').addEventListener('change', (e) => {
+        netState.fillWithAi = e.target.checked;
+        if (netState.mode === 'HOST') {
+          resetMatch();
+        } else {
+          refreshSlotRoles();
+        }
+      });
+      document.getElementById('btnLeaveRoom').addEventListener('click', () => disconnectMultiplayer());
+      document.getElementById('btnSimulateJoin').addEventListener('click', () => simulateFriendJoiningRoom());
+      document.getElementById('btnStartMpMatch').addEventListener('click', () => {
+        resetMatch();
+        document.getElementById('mpModal').classList.add('hidden');
+      });
+      document.getElementById('btnCopyRoomCode').addEventListener('click', () => {
+        if (!netState.roomCode) return;
+        const tempInput = document.createElement('textarea');
+        tempInput.value = netState.roomCode;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        const btn = document.getElementById('btnCopyRoomCode');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy Code'; }, 1500);
+      });
+
+      document.getElementById('btnReset').addEventListener('click', () => resetMatch());
+      document.getElementById('btnPause').addEventListener('click', () => togglePause());
+      document.getElementById('btnAiVision').addEventListener('click', () => toggleAiVision());
+      document.getElementById('btnAtlas').addEventListener('click', () => toggleAtlasModal());
+      document.getElementById('btnCloseAtlas').addEventListener('click', () => toggleAtlasModal());
+      document.getElementById('btnOverlayAction').addEventListener('click', () => {
+        if (matchState === 'PAUSED') togglePause();
+        else resetMatch();
+      });
+
+      document.getElementById('btnSound').addEventListener('click', () => {
+        sfx.enabled = !sfx.enabled;
+        document.getElementById('lblSound').textContent = sfx.enabled ? 'SFX: ON' : 'SFX: MUTE';
+      });
+
+      // --------------------------------------------------------------------------
+      // 14. MAIN DETERMINISTIC 60HZ LOOP + TELEMETRY SAMPLER
+      // --------------------------------------------------------------------------
+      const hudFps = document.getElementById('hudFps');
+      const hudParticles = document.getElementById('hudParticles');
+      const hudAccumulator = document.getElementById('hudAccumulator');
+
+      let lastTime = performance.now();
+      let accumulator = 0;
+      let frameCounter = 0;
+      let fpsTimer = performance.now();
+
+      function mainLoop(now) {
+        let delta = now - lastTime;
+        lastTime = now;
+        if (delta > MAX_FRAME_DELTA) delta = MAX_FRAME_DELTA;
+
+        accumulator += delta;
+
+        // Deterministic 60Hz Fixed-Timestep Logic Updates
+        while (accumulator >= FIXED_DT) {
+          updateFixedTick();
+          accumulator -= FIXED_DT;
+        }
+
+        // Render Pass with Interpolation Factor alpha in [0, 1)
+        const alpha = accumulator / FIXED_DT;
+        renderScene(alpha);
+
+        // Update Telemetry Header twice per second without allocating objects
+        frameCounter++;
+        if (now - fpsTimer >= 500) {
+          const currentFps = Math.round((frameCounter * 1000) / (now - fpsTimer));
+          hudFps.textContent = `${currentFps} FPS`;
+          hudParticles.textContent = `${activeParticleCount} / ${MAX_PARTICLES}`;
+          hudAccumulator.textContent = `alpha: ${alpha.toFixed(2)}`;
+          frameCounter = 0;
+          fpsTimer = now;
+        }
+
+        requestAnimationFrame(mainLoop);
+      }
+
+      // --------------------------------------------------------------------------
+      // 15. BOOTSTRAP ON WINDOW LOAD
+      // --------------------------------------------------------------------------
+      window.onload = function () {
+        buildSpriteAtlas();
+        populateLegendCanvases();
+        resetMatch();
+        lastTime = performance.now();
+        fpsTimer = lastTime;
+        requestAnimationFrame(mainLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
