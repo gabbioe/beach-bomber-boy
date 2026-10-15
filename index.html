@@ -410,7 +410,7 @@
 
             <label class="flex items-center justify-between text-xs text-slate-300 bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 cursor-pointer">
               <span>Fill open slots with AI Bots</span>
-              <input id="chkFillAi" type="checkbox" checked class="accent-cyan-400 w-4 h-4 rounded cursor-pointer" />
+              <input id="chkFillAi" type="checkbox" class="accent-cyan-400 w-4 h-4 rounded cursor-pointer" />
             </label>
 
             <button id="btnCreateRoom" class="game-btn w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider">
@@ -1484,7 +1484,7 @@
         mode: 'SOLO',          // 'SOLO', 'HOST', 'CLIENT'
         roomCode: '',
         localSlot: 0,          // Which character index (0..3) this browser controls
-        fillWithAi: true,
+        fillWithAi: false,
         bc: null,              // BroadcastChannel for zero-WebSocket tab/window P2P
         rtcPeers: [null, null, null, null], // Native RTCPeerConnections (no WebSockets)
         rtcChannels: [null, null, null, null], // Native RTCDataChannels
@@ -1537,18 +1537,18 @@
           if (netState.mode === 'SOLO') {
             p.isAI = (i !== 0);
             p.isRemote = false;
+            p.alive = true;
             p.name = i === 0 ? `${p.baseName} (You)` : `${p.baseName} (AI)`;
           } else {
-            const isHuman = netState.slotOccupied[i];
+            const isHuman = Boolean(netState.slotOccupied[i]);
             const isMe = (i === netState.localSlot);
-            p.isAI = !isHuman && netState.fillWithAi;
-            p.isRemote = (netState.mode === 'CLIENT' && !isMe) || (netState.mode === 'HOST' && isHuman && !isMe);
+            p.isAI = false;
+            p.isRemote = (isHuman && !isMe);
+            p.alive = isHuman; // Only spawn players who are actually in the lobby!
             if (isMe) {
               p.name = `${p.baseName} (You • P${i + 1})`;
             } else if (isHuman) {
               p.name = `${p.baseName} (Online P${i + 1})`;
-            } else if (p.isAI) {
-              p.name = `${p.baseName} (AI Bot)`;
             } else {
               p.name = `${p.baseName} (Open Slot)`;
             }
@@ -2050,16 +2050,7 @@
                 hostBombCells.add(idx(sb.x, sb.y));
               }
 
-              // If a bomb was active locally but Host already detonated it, detonate locally now!
-              for (let i = 0; i < MAX_BOMBS; i++) {
-                const b = bombPool[i];
-                if (b.active) {
-                  const c = idx(b.gx, b.gy);
-                  if (!hostBombCells.has(c)) {
-                    detonateBomb(i);
-                  }
-                }
-              }
+// Bombs countdown and detonate locally at 60Hz without premature instant detonation
 
               // Sync active bombs from Host
               for (let j = 0; j < data.b.length; j++) {
@@ -2228,6 +2219,8 @@
 
         function isSpawnSafeZone(gx, gy) {
           for (let i = 0; i < 4; i++) {
+            const shouldSpawn = (netState.mode === 'SOLO') || Boolean(netState.slotOccupied[i]);
+            if (!shouldSpawn) continue;
             const sc = SPAWN_CORNERS[i];
             if (Math.abs(gx - sc.gx) + Math.abs(gy - sc.gy) <= 2) {
               return true;
@@ -2357,7 +2350,8 @@
         for (let i = 0; i < 4; i++) {
           const p = players[i];
           const sc = SPAWN_CORNERS[i];
-          p.alive = true;
+          const shouldSpawn = (netState.mode === 'SOLO') || Boolean(netState.slotOccupied[i]);
+          p.alive = shouldSpawn;
           p.x = sc.gx + 0.5;
           p.y = sc.gy + 0.5;
           p.prevX = p.x;
@@ -3545,11 +3539,10 @@
           bombRequested = false;
         }
 
-        // 7. Update Autonomous AI Contestants (runs in SOLO or on HOST)
-        if (netState.mode !== 'CLIENT') {
-          for (let i = 0; i < 4; i++) {
-            const isSimOnline = (netState.mode === 'HOST' && netState.simulatedSlots[i]);
-            if ((players[i].isAI || isSimOnline) && players[i].alive) {
+        // 7. Update Autonomous AI Contestants (runs only in SOLO mode)
+        if (netState.mode === 'SOLO') {
+          for (let i = 1; i < 4; i++) {
+            if (players[i].alive) {
               updateAutonomousAI(players[i]);
             }
           }
@@ -3691,8 +3684,13 @@
             matchState = 'VICTORY';
           }
         } else {
-          // Online Multiplayer Match End: continue match until 1 (or 0) survivor remains so eliminated players can spectate!
-          if (aliveCount <= 1 && matchState === 'PLAYING') {
+          // Online Multiplayer Match End: only evaluate when at least 2 contestants are in the match
+          let totalCombatants = 0;
+          for (let i = 0; i < 4; i++) {
+            if (netState.slotOccupied[i]) totalCombatants++;
+          }
+
+          if (totalCombatants >= 2 && aliveCount <= 1 && matchState === 'PLAYING') {
             const isHost = (netState.mode === 'HOST');
             const actionText = isHost
               ? 'Press R or click below to launch the next online round.'
@@ -4103,9 +4101,10 @@
           if (p.alive) aliveTotal++;
           const holdingState = p.activeBombs === 0 ? 'ARMED (Bomb)' : 'UNARMED';
           const aiTag = p.isAI && p.alive ? ` &bull; <span class="text-emerald-300">${p.aiState}</span>` : '';
+          const isSlotOccupied = (netState.mode === 'SOLO') || Boolean(netState.slotOccupied[i]);
           const stateBadgeClass = p.alive
             ? (p.activeBombs === 0 ? 'text-amber-300 bg-amber-500/15 border-amber-400/30' : 'text-cyan-300 bg-cyan-500/15 border-cyan-400/30')
-            : 'text-rose-300 bg-rose-500/15 border-rose-400/30';
+            : (isSlotOccupied ? 'text-rose-300 bg-rose-500/15 border-rose-400/30' : 'text-slate-500 bg-slate-800/40 border-slate-700');
 
           html += `
             <div class="flex items-center justify-between bg-slate-900/80 border ${p.alive ? 'border-slate-800' : 'border-rose-900/40 opacity-60'} rounded-xl px-3 py-2">
@@ -4117,7 +4116,7 @@
                 </div>
               </div>
               <span class="px-2 py-0.5 text-[10px] font-mono-tech font-semibold rounded border ${stateBadgeClass}">
-                ${p.alive ? holdingState : 'OUT'}
+                ${p.alive ? holdingState : (isSlotOccupied ? 'OUT' : 'OPEN')}
               </span>
             </div>
           `;
