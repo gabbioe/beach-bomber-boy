@@ -1559,6 +1559,27 @@
         if (hudTitle && localP) {
           hudTitle.textContent = `P${netState.localSlot + 1} ${localP.baseName} // Live Rig State`;
         }
+        const btnPause = document.getElementById('btnPause');
+        const btnReset = document.getElementById('btnReset');
+        if (netState.mode === 'CLIENT') {
+          if (btnPause) {
+            btnPause.classList.add('opacity-40', 'cursor-not-allowed');
+            btnPause.title = 'Only the lobby creator/host can pause the game';
+          }
+          if (btnReset) {
+            btnReset.classList.add('opacity-40', 'cursor-not-allowed');
+            btnReset.title = 'Only the lobby creator/host can restart the match';
+          }
+        } else {
+          if (btnPause) {
+            btnPause.classList.remove('opacity-40', 'cursor-not-allowed');
+            btnPause.title = '';
+          }
+          if (btnReset) {
+            btnReset.classList.remove('opacity-40', 'cursor-not-allowed');
+            btnReset.title = '';
+          }
+        }
         renderMpSlotsUI();
       }
 
@@ -1728,21 +1749,25 @@
           }
         } else if (data.t === 'BOMB') {
           const p = players[assignedSlot];
-          if (p && p.alive) {
-            // Use the cell the client was standing on when it pressed the key, if it's close to where we think it is
-            let bgx = Math.floor(p.x);
-            let bgy = Math.floor(p.y);
-            if (typeof data.gx === 'number' && typeof data.gy === 'number' &&
-                Math.abs(data.gx - p.x) <= 1.5 && Math.abs(data.gy - p.y) <= 1.5) {
-              bgx = data.gx;
-              bgy = data.gy;
-            }
-            if (tryPlaceBomb(p, bgx, bgy)) {
-              broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: bgx, gy: bgy });
+          if (p && p.alive && p.activeBombs < p.maxBombs) {
+            let bgx = (typeof data.gx === 'number' && inBounds(data.gx, 0)) ? data.gx : Math.floor(p.x);
+            let bgy = (typeof data.gy === 'number' && inBounds(0, data.gy)) ? data.gy : Math.floor(p.y);
+            const cell = idx(bgx, bgy);
+            if (inBounds(bgx, bgy) && tileMap[cell] === TILE_SAND && bombIndexMap[cell] === 0) {
+              if (tryPlaceBomb(p, bgx, bgy)) {
+                broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: bgx, gy: bgy });
+              }
+            } else {
+              const curGx = Math.floor(p.x);
+              const curGy = Math.floor(p.y);
+              const curCell = idx(curGx, curGy);
+              if (inBounds(curGx, curGy) && tileMap[curCell] === TILE_SAND && bombIndexMap[curCell] === 0) {
+                if (tryPlaceBomb(p, curGx, curGy)) {
+                  broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: curGx, gy: curGy });
+                }
+              }
             }
           }
-        } else if (data.t === 'REQ_RESTART') {
-          resetMatch();
         }
       }
 
@@ -1769,7 +1794,7 @@
         netState.clientConns[assignedSlot] = {
           open: true,
           clientId: clientId,
-          send: (pkt) => sendFn({ ...pkt, to: clientId, slot: assignedSlot })
+          send: (pkt) => sendFn({ ...pkt, to: clientId })
         };
 
         setMpBanner(`PLAYER P${assignedSlot + 1} (${BASE_NAMES[assignedSlot]}) JOINED ROOM [${netState.roomCode}]!`, 'Zero-WS Linked', false);
@@ -1967,19 +1992,26 @@
             netState.fillWithAi = data.fillAi;
             refreshSlotRoles();
             updateRosterHUD();
+          } else if (data.t === 'PAUSE') {
+            if (data.paused && matchState !== 'PAUSED') {
+              togglePause(true);
+            } else if (!data.paused && matchState === 'PAUSED') {
+              togglePause(true);
+            }
           } else if (data.t === 'BOMB_PLACED') {
-            // Every bomb (including our own) is created from the Host's packet so all screens agree
             const p = players[data.slot];
             if (p && p.alive) {
               tryPlaceBomb(p, data.gx, data.gy, true);
             }
           } else if (data.t === 'STATE') {
+            // 1. Authoritative Map & Powerups
             if (typeof data.tm === 'string' && data.tm.length === GRID_SIZE) {
               for (let c = 0; c < GRID_SIZE; c++) {
                 tileMap[c] = data.tm.charCodeAt(c) - 97;
                 powerupMap[c] = data.pu.charCodeAt(c) - 97;
               }
             }
+            // 2. Authoritative Players
             for (let i = 0; i < 4; i++) {
               const sp = data.p[i];
               const lp = players[i];
@@ -2002,6 +2034,58 @@
                 sfx.playEliminated();
                 updateRosterHUD();
                 if (i === netState.localSlot) updatePlayerHUD();
+              }
+            }
+            // 3. Authoritative Active Bombs (Guarantees every player sees all bombs regardless of network drops)
+            if (Array.isArray(data.b)) {
+              bombIndexMap.fill(0);
+              for (let i = 0; i < MAX_BOMBS; i++) {
+                if (i < data.b.length) {
+                  const sb = data.b[i];
+                  const b = bombPool[i];
+                  const wasActive = b.active;
+                  b.active = true;
+                  b.gx = sb.x;
+                  b.gy = sb.y;
+                  b.timer = sb.t;
+                  b.maxTimer = 155;
+                  b.range = sb.r;
+                  b.ownerId = sb.o;
+                  const c = idx(sb.x, sb.y);
+                  bombIndexMap[c] = i + 1;
+                  tileMap[c] = TILE_SAND;
+                  if (!wasActive) {
+                    sfx.playBombPlace();
+                  }
+                } else {
+                  bombPool[i].active = false;
+                }
+              }
+            }
+            // 4. Authoritative Active Explosions (Plasma beams & shockwaves aligned across all devices)
+            if (Array.isArray(data.ex)) {
+              for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+                if (i < data.ex.length) {
+                  const sex = data.ex[i];
+                  const ex = explosionPool[i];
+                  const wasActive = ex.active;
+                  ex.active = true;
+                  ex.gx = sex.x;
+                  ex.gy = sex.y;
+                  ex.timer = sex.t;
+                  ex.maxTimer = sex.mt || 26;
+                  ex.upLen = sex.u;
+                  ex.downLen = sex.d;
+                  ex.leftLen = sex.l;
+                  ex.rightLen = sex.r;
+                  if (!wasActive) {
+                    sfx.playExplosion();
+                    screenShakeTicks = 11;
+                    spawnShockwave((sex.x + 0.5) * TILE_PX, (sex.y + 0.5) * TILE_PX, 3.2 * TILE_PX);
+                  }
+                } else {
+                  explosionPool[i].active = false;
+                }
               }
             }
           } else if (data.t === 'CLOSE' && !data.from) {
@@ -2162,11 +2246,8 @@
 
       // Host/Solo generate a fresh seed; Clients receive the Host's seed so every arena & loot drop is identical.
       function resetMatch(seedVal, fromNetwork) {
-        // A Client can't restart on its own: ask the Host, who rebroadcasts START with a new seed
+        // Only the host (lobby leader) can restart or start a rematch!
         if (netState.mode === 'CLIENT' && !fromNetwork) {
-          if (netState.hostConn && netState.hostConn.open) {
-            netState.hostConn.send({ t: 'REQ_RESTART' });
-          }
           return;
         }
 
@@ -2292,9 +2373,11 @@
           e.preventDefault();
         }
         if (e.code === 'KeyR') {
+          if (netState.mode === 'CLIENT') return; // Only host can restart
           resetMatch();
         }
         if (e.code === 'KeyP') {
+          if (netState.mode === 'CLIENT') return; // Only host can pause
           togglePause();
         }
         if (e.code === 'KeyV') {
@@ -2460,7 +2543,10 @@
         const gy = (atGy !== undefined) ? atGy : Math.floor(p.y);
         if (!inBounds(gx, gy)) return false;
         const cell = idx(gx, gy);
-        if (tileMap[cell] !== TILE_SAND || bombIndexMap[cell] !== 0) return false;
+        if (tileMap[cell] !== TILE_SAND || bombIndexMap[cell] !== 0) {
+          if (!force) return false;
+          tileMap[cell] = TILE_SAND;
+        }
 
         for (let i = 0; i < MAX_BOMBS; i++) {
           const b = bombPool[i];
@@ -3333,9 +3419,12 @@
             );
           }
 
-          b.timer--;
-          if (b.timer <= 0) {
-            detonateBomb(i);
+          // In online multiplayer, the Host authoritatively handles bomb detonation and beam allocation
+          if (netState.mode !== 'CLIENT') {
+            b.timer--;
+            if (b.timer <= 0) {
+              detonateBomb(i);
+            }
           }
         }
 
@@ -3370,9 +3459,17 @@
         if (localPlayer && localPlayer.alive) {
           if (bombRequested) {
             if (netState.mode === 'CLIENT') {
-              // The Host is authoritative: ask it to place the bomb; it comes back to us via BOMB_PLACED
-              if (netState.hostConn && netState.hostConn.open && localPlayer.activeBombs < localPlayer.maxBombs) {
-                netState.hostConn.send({ t: 'BOMB', gx: Math.floor(localPlayer.x), gy: Math.floor(localPlayer.y) });
+              if (localPlayer.activeBombs < localPlayer.maxBombs) {
+                const cgx = Math.floor(localPlayer.x);
+                const cgy = Math.floor(localPlayer.y);
+                const cCell = idx(cgx, cgy);
+                // Zero-latency local client prediction: drop bomb immediately under feet
+                if (tileMap[cCell] === TILE_SAND && bombIndexMap[cCell] === 0) {
+                  tryPlaceBomb(localPlayer, cgx, cgy);
+                }
+                if (netState.hostConn && netState.hostConn.open) {
+                  netState.hostConn.send({ t: 'BOMB', gx: cgx, gy: cgy });
+                }
               }
             } else if (tryPlaceBomb(localPlayer)) {
               if (netState.mode === 'HOST') {
@@ -3424,6 +3521,23 @@
               moving: localPlayer.moving
             });
           } else if (netState.mode === 'HOST') {
+            const activeBombs = [];
+            for (let i = 0; i < MAX_BOMBS; i++) {
+              const b = bombPool[i];
+              if (b.active) {
+                activeBombs.push({ x: b.gx, y: b.gy, t: b.timer, r: b.range, o: b.ownerId });
+              }
+            }
+            const activeExplosions = [];
+            for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+              const ex = explosionPool[i];
+              if (ex.active) {
+                activeExplosions.push({
+                  x: ex.gx, y: ex.gy, t: ex.timer, mt: ex.maxTimer,
+                  u: ex.upLen, d: ex.downLen, l: ex.leftLen, r: ex.rightLen
+                });
+              }
+            }
             const statePkt = {
               t: 'STATE',
               p: [
@@ -3431,10 +3545,11 @@
                 { x: players[1].x, y: players[1].y, d: players[1].dir, m: players[1].moving, a: players[1].alive, mb: players[1].maxBombs, ab: players[1].activeBombs, fr: players[1].flameRange, sp: players[1].speed, ais: players[1].aiState },
                 { x: players[2].x, y: players[2].y, d: players[2].dir, m: players[2].moving, a: players[2].alive, mb: players[2].maxBombs, ab: players[2].activeBombs, fr: players[2].flameRange, sp: players[2].speed, ais: players[2].aiState },
                 { x: players[3].x, y: players[3].y, d: players[3].dir, m: players[3].moving, a: players[3].alive, mb: players[3].maxBombs, ab: players[3].activeBombs, fr: players[3].flameRange, sp: players[3].speed, ais: players[3].aiState }
-              ]
+              ],
+              b: activeBombs,
+              ex: activeExplosions
             };
-            // Every ~0.27s also send the full terrain + powerup grid so a Client's map can never drift from the Host's
-            if (gameTick % 16 === 0) {
+            if (activeBombs.length > 0 || activeExplosions.length > 0 || gameTick % 8 === 0) {
               let tm = '';
               let pu = '';
               for (let c = 0; c < GRID_SIZE; c++) {
@@ -3533,15 +3648,32 @@
         } else {
           // Online Multiplayer Match End: continue match until 1 (or 0) survivor remains so eliminated players can spectate!
           if (aliveCount <= 1 && matchState === 'PLAYING') {
+            const isHost = (netState.mode === 'HOST');
+            const actionText = isHost
+              ? 'Press R or click below to launch the next online round.'
+              : 'Waiting for the lobby host to launch the next online round...';
+
             if (lastSurvivor && lastSurvivor.id === netState.localSlot) {
-              showMatchBanner('ONLINE VICTORY', `${lastSurvivor.baseName.toUpperCase()} WINS THE COVE!`, 'You are the last blaster standing in the online arena!');
+              showMatchBanner('ONLINE VICTORY', `${lastSurvivor.baseName.toUpperCase()} WINS THE COVE!`, isHost ? 'You are the champion! Press R to start a rematch.' : 'You won! Waiting for host to launch the next round...');
               matchState = 'VICTORY';
             } else if (lastSurvivor) {
-              showMatchBanner('ROUND COMPLETE', `${lastSurvivor.baseName.toUpperCase()} (P${lastSurvivor.id + 1}) WINS!`, 'Press R or click below to launch the next online round.');
+              showMatchBanner('ROUND COMPLETE', `${lastSurvivor.baseName.toUpperCase()} (P${lastSurvivor.id + 1}) WINS!`, actionText);
               matchState = 'DEFEAT';
             } else {
-              showMatchBanner('DRAW GAME', 'DOUBLE KNOCKOUT!', 'All final blasters were eliminated simultaneously!');
+              showMatchBanner('DRAW GAME', 'DOUBLE KNOCKOUT!', actionText);
               matchState = 'DEFEAT';
+            }
+
+            const btn = document.getElementById('btnOverlayAction');
+            if (btn) {
+              if (isHost) {
+                btn.textContent = 'Start Next Round [R]';
+                btn.classList.remove('opacity-50', 'cursor-not-allowed', 'hidden');
+              } else {
+                btn.textContent = 'Waiting for Host...';
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.classList.remove('hidden');
+              }
             }
           }
         }
@@ -3985,15 +4117,34 @@
         document.getElementById('matchOverlay').classList.remove('hidden');
       }
 
-      function togglePause() {
+      function togglePause(fromNetwork) {
+        if (netState.mode === 'CLIENT' && !fromNetwork) return; // Only host can pause
+
         if (matchState === 'PLAYING') {
           matchState = 'PAUSED';
-          showMatchBanner('SIMULATION PAUSED', 'GAME PAUSED', 'Deterministic 60Hz loop is suspended. Press P or click below to resume.');
-          document.getElementById('btnOverlayAction').textContent = 'Resume Match [P]';
+          showMatchBanner(
+            netState.mode === 'CLIENT' ? 'MATCH PAUSED' : 'SIMULATION PAUSED',
+            netState.mode === 'CLIENT' ? 'PAUSED BY HOST' : 'GAME PAUSED',
+            netState.mode === 'CLIENT'
+              ? 'The lobby host suspended the match. Waiting for host to resume...'
+              : 'Deterministic 60Hz loop is suspended. Press P or click below to resume.'
+          );
+          if (netState.mode === 'CLIENT') {
+            document.getElementById('btnOverlayAction').classList.add('hidden');
+          } else {
+            document.getElementById('btnOverlayAction').textContent = 'Resume Match [P]';
+            document.getElementById('btnOverlayAction').classList.remove('hidden');
+          }
+          if (netState.mode === 'HOST' && !fromNetwork) {
+            broadcastToClients({ t: 'PAUSE', paused: true });
+          }
         } else if (matchState === 'PAUSED') {
           matchState = 'PLAYING';
           document.getElementById('matchOverlay').classList.add('hidden');
           document.getElementById('btnOverlayAction').textContent = 'Play Again [R]';
+          if (netState.mode === 'HOST' && !fromNetwork) {
+            broadcastToClients({ t: 'PAUSE', paused: false });
+          }
         }
       }
 
@@ -4059,12 +4210,19 @@
         setTimeout(() => { btn.textContent = 'Copy Code'; }, 1500);
       });
 
-      document.getElementById('btnReset').addEventListener('click', () => resetMatch());
-      document.getElementById('btnPause').addEventListener('click', () => togglePause());
+      document.getElementById('btnReset').addEventListener('click', () => {
+        if (netState.mode === 'CLIENT') return; // Only host can restart
+        resetMatch();
+      });
+      document.getElementById('btnPause').addEventListener('click', () => {
+        if (netState.mode === 'CLIENT') return; // Only host can pause
+        togglePause();
+      });
       document.getElementById('btnAiVision').addEventListener('click', () => toggleAiVision());
       document.getElementById('btnAtlas').addEventListener('click', () => toggleAtlasModal());
       document.getElementById('btnCloseAtlas').addEventListener('click', () => toggleAtlasModal());
       document.getElementById('btnOverlayAction').addEventListener('click', () => {
+        if (netState.mode === 'CLIENT') return; // Only host can restart or resume
         if (matchState === 'PAUSED') togglePause();
         else resetMatch();
       });
