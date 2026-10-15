@@ -1729,8 +1729,16 @@
         } else if (data.t === 'BOMB') {
           const p = players[assignedSlot];
           if (p && p.alive) {
-            if (tryPlaceBomb(p)) {
-              broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: Math.floor(p.x), gy: Math.floor(p.y) });
+            // Use the cell the client was standing on when it pressed the key, if it's close to where we think it is
+            let bgx = Math.floor(p.x);
+            let bgy = Math.floor(p.y);
+            if (typeof data.gx === 'number' && typeof data.gy === 'number' &&
+                Math.abs(data.gx - p.x) <= 1.5 && Math.abs(data.gy - p.y) <= 1.5) {
+              bgx = data.gx;
+              bgy = data.gy;
+            }
+            if (tryPlaceBomb(p, bgx, bgy)) {
+              broadcastToClients({ t: 'BOMB_PLACED', slot: assignedSlot, gx: bgx, gy: bgy });
             }
           }
         } else if (data.t === 'REQ_RESTART') {
@@ -1754,6 +1762,10 @@
 
         netState.slotOccupied[assignedSlot] = true;
         netState.simulatedSlots[assignedSlot] = false;
+
+        // Start a fresh round FIRST (existing clients get the new seed via START), then register the newcomer
+        // and welcome it with that same seed - previously WELCOME carried the old seed, giving different maps.
+        resetMatch();
         netState.clientConns[assignedSlot] = {
           open: true,
           clientId: clientId,
@@ -1770,7 +1782,6 @@
           occupied: netState.slotOccupied,
           fillAi: netState.fillWithAi
         });
-        resetMatch();
         return assignedSlot;
       }
 
@@ -1957,13 +1968,18 @@
             refreshSlotRoles();
             updateRosterHUD();
           } else if (data.t === 'BOMB_PLACED') {
+            // Every bomb (including our own) is created from the Host's packet so all screens agree
             const p = players[data.slot];
-            if (p && p.alive && data.slot !== netState.localSlot) {
-              p.x = data.gx + 0.5;
-              p.y = data.gy + 0.5;
-              tryPlaceBomb(p);
+            if (p && p.alive) {
+              tryPlaceBomb(p, data.gx, data.gy, true);
             }
           } else if (data.t === 'STATE') {
+            if (typeof data.tm === 'string' && data.tm.length === GRID_SIZE) {
+              for (let c = 0; c < GRID_SIZE; c++) {
+                tileMap[c] = data.tm.charCodeAt(c) - 97;
+                powerupMap[c] = data.pu.charCodeAt(c) - 97;
+              }
+            }
             for (let i = 0; i < 4; i++) {
               const sp = data.p[i];
               const lp = players[i];
@@ -2048,6 +2064,7 @@
         let attempts = 0;
         netState.pollTimer = setInterval(async () => {
           if (netState.mode !== 'CLIENT') return;
+          if (hostDc && hostDc.open) return; // WebRTC link is live: ignore the (possibly stale) HTTP snapshot
           if (!connected) {
             attempts++;
             if (bc) {
@@ -2435,10 +2452,12 @@
         }
       }
 
-      function tryPlaceBomb(p) {
-        if (!p.alive || p.activeBombs >= p.maxBombs) return false;
-        const gx = Math.floor(p.x);
-        const gy = Math.floor(p.y);
+      // atGx/atGy: optional explicit cell (used when the Host tells Clients where a bomb went).
+      // force: skip the bomb-count check (the Host already validated it; Client counters come from STATE packets).
+      function tryPlaceBomb(p, atGx, atGy, force) {
+        if (!p.alive || (!force && p.activeBombs >= p.maxBombs)) return false;
+        const gx = (atGx !== undefined) ? atGx : Math.floor(p.x);
+        const gy = (atGy !== undefined) ? atGy : Math.floor(p.y);
         if (!inBounds(gx, gy)) return false;
         const cell = idx(gx, gy);
         if (tileMap[cell] !== TILE_SAND || bombIndexMap[cell] !== 0) return false;
@@ -2456,8 +2475,11 @@
 
             bombIndexMap[cell] = i + 1;
             p.activeBombs++;
-            p.passableBombGx = gx;
-            p.passableBombGy = gy;
+            // Only let the owner walk off the bomb if they're actually standing on it
+            if (Math.floor(p.x) === gx && Math.floor(p.y) === gy) {
+              p.passableBombGx = gx;
+              p.passableBombGy = gy;
+            }
 
             sfx.playBombPlace();
             updateRosterHUD();
@@ -3347,7 +3369,12 @@
         const localPlayer = players[netState.localSlot];
         if (localPlayer && localPlayer.alive) {
           if (bombRequested) {
-            if (tryPlaceBomb(localPlayer)) {
+            if (netState.mode === 'CLIENT') {
+              // The Host is authoritative: ask it to place the bomb; it comes back to us via BOMB_PLACED
+              if (netState.hostConn && netState.hostConn.open && localPlayer.activeBombs < localPlayer.maxBombs) {
+                netState.hostConn.send({ t: 'BOMB', gx: Math.floor(localPlayer.x), gy: Math.floor(localPlayer.y) });
+              }
+            } else if (tryPlaceBomb(localPlayer)) {
               if (netState.mode === 'HOST') {
                 broadcastToClients({
                   t: 'BOMB_PLACED',
@@ -3355,8 +3382,6 @@
                   gx: Math.floor(localPlayer.x),
                   gy: Math.floor(localPlayer.y)
                 });
-              } else if (netState.mode === 'CLIENT' && netState.hostConn && netState.hostConn.open) {
-                netState.hostConn.send({ t: 'BOMB' });
               }
             }
             bombRequested = false;
@@ -3399,7 +3424,7 @@
               moving: localPlayer.moving
             });
           } else if (netState.mode === 'HOST') {
-            broadcastToClients({
+            const statePkt = {
               t: 'STATE',
               p: [
                 { x: players[0].x, y: players[0].y, d: players[0].dir, m: players[0].moving, a: players[0].alive, mb: players[0].maxBombs, ab: players[0].activeBombs, fr: players[0].flameRange, sp: players[0].speed, ais: players[0].aiState },
@@ -3407,7 +3432,19 @@
                 { x: players[2].x, y: players[2].y, d: players[2].dir, m: players[2].moving, a: players[2].alive, mb: players[2].maxBombs, ab: players[2].activeBombs, fr: players[2].flameRange, sp: players[2].speed, ais: players[2].aiState },
                 { x: players[3].x, y: players[3].y, d: players[3].dir, m: players[3].moving, a: players[3].alive, mb: players[3].maxBombs, ab: players[3].activeBombs, fr: players[3].flameRange, sp: players[3].speed, ais: players[3].aiState }
               ]
-            });
+            };
+            // Every ~0.27s also send the full terrain + powerup grid so a Client's map can never drift from the Host's
+            if (gameTick % 16 === 0) {
+              let tm = '';
+              let pu = '';
+              for (let c = 0; c < GRID_SIZE; c++) {
+                tm += String.fromCharCode(97 + tileMap[c]);
+                pu += String.fromCharCode(97 + powerupMap[c]);
+              }
+              statePkt.tm = tm;
+              statePkt.pu = pu;
+            }
+            broadcastToClients(statePkt);
           }
         }
 
