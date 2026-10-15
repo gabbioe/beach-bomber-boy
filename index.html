@@ -1998,6 +1998,12 @@
             } else if (!data.paused && matchState === 'PAUSED') {
               togglePause(true);
             }
+          } else if (data.t === 'DETONATE') {
+            const cell = idx(data.gx, data.gy);
+            const ref = bombIndexMap[cell];
+            if (ref !== 0) {
+              detonateBomb(ref - 1);
+            }
           } else if (data.t === 'BOMB_PLACED') {
             const p = players[data.slot];
             if (p && p.alive) {
@@ -2036,55 +2042,92 @@
                 if (i === netState.localSlot) updatePlayerHUD();
               }
             }
-            // 3. Authoritative Active Bombs (Guarantees every player sees all bombs regardless of network drops)
+            // 3. Authoritative Active Bombs (Coordinate-matched so timers tick smoothly without stutter or premature disappearance)
             if (Array.isArray(data.b)) {
-              bombIndexMap.fill(0);
+              const hostBombCells = new Set();
+              for (let j = 0; j < data.b.length; j++) {
+                const sb = data.b[j];
+                hostBombCells.add(idx(sb.x, sb.y));
+              }
+
+              // If a bomb was active locally but Host already detonated it, detonate locally now!
               for (let i = 0; i < MAX_BOMBS; i++) {
-                if (i < data.b.length) {
-                  const sb = data.b[i];
-                  const b = bombPool[i];
-                  const wasActive = b.active;
-                  b.active = true;
-                  b.gx = sb.x;
-                  b.gy = sb.y;
-                  b.timer = sb.t;
-                  b.maxTimer = 155;
-                  b.range = sb.r;
-                  b.ownerId = sb.o;
-                  const c = idx(sb.x, sb.y);
-                  bombIndexMap[c] = i + 1;
-                  tileMap[c] = TILE_SAND;
-                  if (!wasActive) {
-                    sfx.playBombPlace();
+                const b = bombPool[i];
+                if (b.active) {
+                  const c = idx(b.gx, b.gy);
+                  if (!hostBombCells.has(c)) {
+                    detonateBomb(i);
+                  }
+                }
+              }
+
+              // Sync active bombs from Host
+              for (let j = 0; j < data.b.length; j++) {
+                const sb = data.b[j];
+                const c = idx(sb.x, sb.y);
+                const existingRef = bombIndexMap[c];
+                if (existingRef !== 0) {
+                  const b = bombPool[existingRef - 1];
+                  if (b && b.active) {
+                    // Only gently adjust timer if drifted by more than 15 ticks (~250ms)
+                    if (Math.abs(b.timer - sb.t) > 15) {
+                      b.timer = sb.t;
+                    }
+                    b.range = sb.r;
+                    b.ownerId = sb.o;
                   }
                 } else {
-                  bombPool[i].active = false;
+                  // New bomb confirmed by Host
+                  for (let i = 0; i < MAX_BOMBS; i++) {
+                    const b = bombPool[i];
+                    if (!b.active) {
+                      b.active = true;
+                      b.gx = sb.x;
+                      b.gy = sb.y;
+                      b.timer = sb.t;
+                      b.maxTimer = 155;
+                      b.range = sb.r;
+                      b.ownerId = sb.o;
+                      bombIndexMap[c] = i + 1;
+                      tileMap[c] = TILE_SAND;
+                      sfx.playBombPlace();
+                      break;
+                    }
+                  }
                 }
               }
             }
-            // 4. Authoritative Active Explosions (Plasma beams & shockwaves aligned across all devices)
+            // 4. Fallback Active Explosions (Plasma beams & shockwaves aligned across all devices)
             if (Array.isArray(data.ex)) {
-              for (let i = 0; i < MAX_EXPLOSIONS; i++) {
-                if (i < data.ex.length) {
-                  const sex = data.ex[i];
+              for (let j = 0; j < data.ex.length; j++) {
+                const sex = data.ex[j];
+                let found = false;
+                for (let i = 0; i < MAX_EXPLOSIONS; i++) {
                   const ex = explosionPool[i];
-                  const wasActive = ex.active;
-                  ex.active = true;
-                  ex.gx = sex.x;
-                  ex.gy = sex.y;
-                  ex.timer = sex.t;
-                  ex.maxTimer = sex.mt || 26;
-                  ex.upLen = sex.u;
-                  ex.downLen = sex.d;
-                  ex.leftLen = sex.l;
-                  ex.rightLen = sex.r;
-                  if (!wasActive) {
-                    sfx.playExplosion();
-                    screenShakeTicks = 11;
-                    spawnShockwave((sex.x + 0.5) * TILE_PX, (sex.y + 0.5) * TILE_PX, 3.2 * TILE_PX);
+                  if (ex.active && ex.gx === sex.x && ex.gy === sex.y) {
+                    found = true;
+                    break;
                   }
-                } else {
-                  explosionPool[i].active = false;
+                }
+                if (!found) {
+                  for (let i = 0; i < MAX_EXPLOSIONS; i++) {
+                    const ex = explosionPool[i];
+                    if (!ex.active) {
+                      ex.active = true;
+                      ex.gx = sex.x;
+                      ex.gy = sex.y;
+                      ex.timer = sex.t;
+                      ex.maxTimer = sex.mt || 26;
+                      ex.upLen = sex.u;
+                      ex.downLen = sex.d;
+                      ex.leftLen = sex.l;
+                      ex.rightLen = sex.r;
+                      sfx.playExplosion();
+                      screenShakeTicks = 11;
+                      spawnShockwave((sex.x + 0.5) * TILE_PX, (sex.y + 0.5) * TILE_PX, 3.2 * TILE_PX);
+                      break;
+                    }
+                  }
                 }
               }
             }
@@ -2623,7 +2666,12 @@
       function detonateBomb(bombIdx) {
         const b = bombPool[bombIdx];
         if (!b.active) return;
+        const bgx = b.gx;
+        const bgy = b.gy;
         b.active = false;
+        if (netState.mode === 'HOST') {
+          broadcastToClients({ t: 'DETONATE', gx: bgx, gy: bgy });
+        }
 
         const centerCell = idx(b.gx, b.gy);
         if (bombIndexMap[centerCell] === bombIdx + 1) {
@@ -3419,12 +3467,9 @@
             );
           }
 
-          // In online multiplayer, the Host authoritatively handles bomb detonation and beam allocation
-          if (netState.mode !== 'CLIENT') {
-            b.timer--;
-            if (b.timer <= 0) {
-              detonateBomb(i);
-            }
+          b.timer--;
+          if (b.timer <= 0) {
+            detonateBomb(i);
           }
         }
 
